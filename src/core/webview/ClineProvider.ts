@@ -1948,7 +1948,8 @@ export class ClineProvider
 			const [marketplaceResult, marketplaceInstalledMetadata] = await Promise.all([
 				this.marketplaceManager.getMarketplaceItems().catch((error) => {
 					console.error("Failed to fetch marketplace items:", error)
-					return { marketplaceItems: [], errors: [error.message] }
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					return { marketplaceItems: [], errors: [errorMessage] }
 				}),
 				this.marketplaceManager.getInstallationMetadata().catch((error) => {
 					console.error("Failed to fetch installation metadata:", error)

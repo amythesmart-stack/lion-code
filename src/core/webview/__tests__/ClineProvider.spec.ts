@@ -676,6 +676,25 @@ describe("ClineProvider", () => {
 		})
 	})
 
+	test("fetchMarketplaceData normalizes non-Error marketplace fetch failures", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+		;(provider as any).marketplaceManager = {
+			getMarketplaceItems: vi.fn().mockRejectedValue("Marketplace unavailable"),
+			getInstallationMetadata: vi.fn().mockResolvedValue({ project: {}, global: {} }),
+		}
+
+		mockPostMessage.mockClear()
+
+		await provider.fetchMarketplaceData()
+
+		expect(mockPostMessage).toHaveBeenCalledWith({
+			type: "marketplaceData",
+			marketplaceItems: [],
+			marketplaceInstalledMetadata: { project: {}, global: {} },
+			errors: ["Marketplace unavailable"],
+		})
+	})
+
 	test("clearTask aborts current task", async () => {
 		// Setup Cline instance with auto-mock from the top of the file
 		const mockCline = new Task(defaultTaskOptions) // Create a new mocked instance

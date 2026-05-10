@@ -179,7 +179,8 @@ describe("MarketplaceViewStateManager", () => {
 				marketplaceInstalledMetadata: { project: {}, global: {} },
 			})
 
-			const notifiedState = mockStateChangeHandler.mock.calls[0][0]
+			expect(mockStateChangeHandler).toHaveBeenCalled()
+			const notifiedState = mockStateChangeHandler.mock.calls[mockStateChangeHandler.mock.calls.length - 1][0]
 			expect(notifiedState.allItems).toEqual(mockMarketplaceItems)
 			expect(notifiedState.displayItems).toEqual(mockMarketplaceItems)
 		})
