@@ -27,7 +27,7 @@ interface ZooGatewayUsage extends OpenAI.CompletionUsage {
 
 export class ZooGatewayHandler extends RouterProvider implements SingleCompletionHandler {
 	constructor(options: ApiHandlerOptions) {
-		const baseURL = options.zooGatewayBaseUrl ?? "https://zoocode.dev/api/gateway/v1"
+		const baseURL = options.zooGatewayBaseUrl ?? "https://www.zoocode.dev/api/gateway/v1"
 
 		super({
 			options,

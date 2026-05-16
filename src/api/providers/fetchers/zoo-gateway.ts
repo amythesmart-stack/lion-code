@@ -59,7 +59,7 @@ type ZooGatewayModelsResponse = z.infer<typeof zooGatewayModelsResponseSchema>
 
 export async function getZooGatewayModels(options?: ApiHandlerOptions): Promise<Record<string, ModelInfo>> {
 	const models: Record<string, ModelInfo> = {}
-	const baseURL = options?.zooGatewayBaseUrl ?? "https://zoocode.dev/api/gateway/v1"
+	const baseURL = options?.zooGatewayBaseUrl ?? "https://www.zoocode.dev/api/gateway/v1"
 
 	// Build headers - Zoo Gateway requires authentication via the zoo_ext_ session token
 	const headers: Record<string, string> = {}
