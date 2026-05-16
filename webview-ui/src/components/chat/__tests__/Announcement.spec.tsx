@@ -12,7 +12,7 @@ vi.mock("@src/utils/vscode", () => ({
 
 vi.mock("@roo/package", () => ({
 	Package: {
-		version: "3.53.0",
+		version: "3.54.0",
 	},
 }))
 
@@ -25,7 +25,13 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-	Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,
+	Trans: ({ i18nKey, components }: { i18nKey: string; components?: Record<string, React.ReactElement> }) => {
+		if (i18nKey === "chat:announcement.support" && components?.githubLink) {
+			return React.cloneElement(components.githubLink, undefined, "GitHub")
+		}
+
+		return <span>{i18nKey}</span>
+	},
 }))
 
 vi.mock("@src/i18n/TranslationContext", () => ({
@@ -43,7 +49,7 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 			}
 
 			if (key === "chat:announcement.title") {
-				return `Roo Code ${options?.version ?? ""} Released`
+				return `Zoo Code ${options?.version ?? ""} Released`
 			}
 
 			return translations[key] ?? key
@@ -52,10 +58,10 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 }))
 
 describe("Announcement", () => {
-	it("renders the v3.53.0 announcement title and highlights", () => {
+	it("renders the v3.54.0 announcement title and highlights", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
-		expect(screen.getByText("Roo Code 3.53.0 Released")).toBeInTheDocument()
+		expect(screen.getByText("Zoo Code 3.54.0 Released")).toBeInTheDocument()
 		expect(
 			screen.getByText(
 				"GPT-5.5 via OpenAI Codex: Added GPT-5.5 support in the OpenAI Codex provider so you can use the latest model straight from Roo Code.",
@@ -77,5 +83,14 @@ describe("Announcement", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
 		expect(screen.getAllByRole("listitem")).toHaveLength(3)
+	})
+
+	it("links support users to the Zoo Code GitHub repository", () => {
+		render(<Announcement hideAnnouncement={vi.fn()} />)
+
+		expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+			"href",
+			"https://github.com/Zoo-Code-Org/Zoo-Code",
+		)
 	})
 })
