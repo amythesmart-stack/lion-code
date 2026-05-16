@@ -2441,6 +2441,27 @@ export const webviewMessageHandler = async (
 			try {
 				const { disconnectZooCode } = await import("../../services/zoo-code-auth")
 				await disconnectZooCode()
+
+				// Also clear the zooSessionToken from the "Zoo Gateway" provider profile
+				// The token is saved there by handleZooCodeCallback() and persists after sign-out
+				try {
+					const profileName = "Zoo Gateway"
+					if (provider.hasProviderProfileEntry(profileName)) {
+						const profile = await provider.providerSettingsManager.getProfile({ name: profileName })
+						if (profile.zooSessionToken) {
+							// Clear the token from the profile
+							const { zooSessionToken: _removed, ...cleanedProfile } = profile
+							await provider.providerSettingsManager.saveConfig(profileName, cleanedProfile)
+							provider.log(`[zooCodeSignOut] Cleared zooSessionToken from "${profileName}" profile`)
+						}
+					}
+				} catch (profileError) {
+					// Log but don't fail the sign-out if profile cleanup fails
+					provider.log(
+						`[zooCodeSignOut] Failed to clear profile token: ${profileError instanceof Error ? profileError.message : String(profileError)}`,
+					)
+				}
+
 				await provider.postStateToWebview()
 			} catch (error) {
 				provider.log(
