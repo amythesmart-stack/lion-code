@@ -10,7 +10,17 @@ import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 import { findLast } from "../../shared/array"
 import { supportPrompt } from "../../shared/support-prompt"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
+import { MissingToolResultError } from "../task/validateToolResultIds"
 import { generateFoldedFileContext } from "./foldedFileContext"
+
+export const SYNTHETIC_TOOL_RESULT_REASONS = {
+	condense: "Context condensation triggered. Tool execution deferred.",
+	historyShaping:
+		"Tool result was filtered from history before this request (truncation/condensation). Continuing without it.",
+} as const
+
+export type SyntheticToolResultReason =
+	(typeof SYNTHETIC_TOOL_RESULT_REASONS)[keyof typeof SYNTHETIC_TOOL_RESULT_REASONS]
 
 export type { FoldedFileContextResult, FoldedFileContextOptions } from "./foldedFileContext"
 
@@ -124,14 +134,28 @@ The goal is for work to continue seamlessly after condensation - as if it never 
 
 /**
  * Injects synthetic tool_results for orphan tool_calls that don't have matching results.
- * This is necessary because OpenAI's Responses API rejects conversations with orphan tool_calls.
- * This can happen when the user triggers condense after receiving a tool_call (like attempt_completion)
- * but before responding to it.
+ * This is necessary because OpenAI's Responses API rejects conversations with orphan tool_calls,
+ * and Anthropic's Messages API rejects requests with unpaired tool_use blocks.
+ *
+ * This can happen when:
+ *  - The user triggers condense after receiving a tool_call but before responding to it
+ *    (original use case; pass reason "condense").
+ *  - History shaping (truncation/condensation filters in `getEffectiveApiHistory`) drops the
+ *    user message that carried a tool_result while leaving the assistant tool_use behind
+ *    (issue #190; pass reason "historyShaping").
+ *
+ * Emits MissingToolResultError telemetry on each fired injection so we can confirm in
+ * production whether this guard is doing work and which source dominates.
  *
  * @param messages - The conversation messages to process
+ * @param reason - The synthetic tool_result body used to pair orphans. Defaults to the
+ *                condense reason to preserve historical behavior.
  * @returns The messages with synthetic tool_results appended if needed
  */
-export function injectSyntheticToolResults(messages: ApiMessage[]): ApiMessage[] {
+export function injectSyntheticToolResults(
+	messages: ApiMessage[],
+	reason: SyntheticToolResultReason = SYNTHETIC_TOOL_RESULT_REASONS.condense,
+): ApiMessage[] {
 	// Find all tool_call IDs in assistant messages
 	const toolCallIds = new Set<string>()
 	// Find all tool_result IDs in user messages
@@ -161,11 +185,32 @@ export function injectSyntheticToolResults(messages: ApiMessage[]): ApiMessage[]
 		return messages
 	}
 
+	// Mirror the validateToolResultIds.ts telemetry shape so PostHog dashboards keyed off
+	// MissingToolResultError already aggregate this. The `reason` tag lets us split sources
+	// once data is in.
+	if (TelemetryService.hasInstance()) {
+		TelemetryService.instance.captureException(
+			new MissingToolResultError(
+				`injectSyntheticToolResults paired ${orphanIds.length} orphan tool_use block(s). reason=${reason}`,
+				orphanIds,
+				[...toolResultIds],
+			),
+			{
+				reason,
+				missingToolUseIds: orphanIds,
+				existingToolResultIds: [...toolResultIds],
+				toolUseCount: toolCallIds.size,
+				toolResultCount: toolResultIds.size,
+				source: "injectSyntheticToolResults",
+			},
+		)
+	}
+
 	// Inject synthetic tool_results as a new user message
 	const syntheticResults: Anthropic.Messages.ToolResultBlockParam[] = orphanIds.map((id) => ({
 		type: "tool_result" as const,
 		tool_use_id: id,
-		content: "Context condensation triggered. Tool execution deferred.",
+		content: reason,
 	}))
 
 	const syntheticMessage: ApiMessage = {

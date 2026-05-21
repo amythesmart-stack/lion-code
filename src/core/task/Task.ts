@@ -126,7 +126,13 @@ import {
 	checkpointDiff,
 } from "../checkpoints"
 import { processUserContentMentions } from "../mentions/processUserContentMentions"
-import { getMessagesSinceLastSummary, summarizeConversation, getEffectiveApiHistory } from "../condense"
+import {
+	getMessagesSinceLastSummary,
+	summarizeConversation,
+	getEffectiveApiHistory,
+	injectSyntheticToolResults,
+	SYNTHETIC_TOOL_RESULT_REASONS,
+} from "../condense"
 import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
@@ -4077,7 +4083,18 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// This allows non-destructive condensing where messages are tagged but not deleted,
 		// enabling accurate rewind operations while still sending condensed history to the API.
 		const effectiveHistory = getEffectiveApiHistory(this.apiConversationHistory)
-		const messagesSinceLastSummary = getMessagesSinceLastSummary(effectiveHistory)
+		// Pair any assistant tool_use blocks whose tool_result was filtered away by history
+		// shaping (truncation or condensation). Without this, the next /v1/messages request
+		// can carry a tool_use without a matching tool_result in the following user message —
+		// Anthropic rejects that with "tool_use ids were found without tool_result blocks
+		// immediately after" (see issue #190). Applied only on the send path; the validator
+		// peeks in Task.ts:945 and apiConversationHistory.ts:110 must keep seeing the raw
+		// effective history so their lastEffective.role checks remain meaningful.
+		const paddedEffectiveHistory = injectSyntheticToolResults(
+			effectiveHistory,
+			SYNTHETIC_TOOL_RESULT_REASONS.historyShaping,
+		)
+		const messagesSinceLastSummary = getMessagesSinceLastSummary(paddedEffectiveHistory)
 		// For API only: merge consecutive user messages (excludes summary messages per
 		// mergeConsecutiveApiMessages implementation) without mutating stored history.
 		const mergedForApi = mergeConsecutiveApiMessages(messagesSinceLastSummary, { roles: ["user"] })
