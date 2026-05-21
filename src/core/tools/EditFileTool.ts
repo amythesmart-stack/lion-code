@@ -3,8 +3,7 @@ import path from "path"
 
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
-import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
@@ -156,12 +155,12 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 				return
 			}
 
-			const absolutePath = path.resolve(task.cwd, relPath)
+			const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
 			const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 			const sharedMessageProps: ClineSayTool = {
 				tool: "appliedDiff",
-				path: getReadablePath(task.cwd, relPath),
+				path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 				diff: operationPreviewForErrorHandling,
 				isOutsideWorkspace,
 			}
@@ -197,6 +196,8 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 				relPath = file_path
 			}
 			relPathForErrorHandling = relPath
+			const absolutePath = await resolvePathInWorkspace(task.cwd, file_path)
+			const diffPath = absolutePath === path.resolve(task.cwd, relPath) ? relPath : absolutePath
 
 			operationPreviewForErrorHandling =
 				old_string === ""
@@ -206,7 +207,7 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 							return `replacing: "${preview}"`
 						})()
 
-			const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+			const accessAllowed = task.rooIgnoreController?.validateAccess(absolutePath)
 
 			if (!accessAllowed) {
 				// Finalize the partial tool preview before emitting any say() messages.
@@ -218,9 +219,7 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 			}
 
 			// Check if file is write-protected
-			const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
-
-			const absolutePath = path.resolve(task.cwd, relPath)
+			const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 			const fileExists = await fileExistsAtPath(absolutePath)
 
 			let currentContent: string | null = null
@@ -403,7 +402,7 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 
 			const sharedMessageProps: ClineSayTool = {
 				tool: isNewFile ? "newFileCreated" : "appliedDiff",
-				path: getReadablePath(task.cwd, relPath),
+				path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 				diff: sanitizedDiff,
 				isOutsideWorkspace,
 			}
@@ -417,7 +416,7 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 
 			// Show diff view if focus disruption prevention is disabled
 			if (!isPreventFocusDisruptionEnabled) {
-				await task.diffViewProvider.open(relPath)
+				await task.diffViewProvider.open(diffPath)
 				await task.diffViewProvider.update(newContent, true)
 				task.diffViewProvider.scrollToFirstDiff()
 			}
@@ -438,7 +437,7 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 			if (isPreventFocusDisruptionEnabled) {
 				// Direct file write without diff view or opening the file
 				await task.diffViewProvider.saveDirectly(
-					relPath,
+					diffPath,
 					newContent,
 					isNewFile,
 					diagnosticsEnabled,
@@ -511,12 +510,12 @@ export class EditFileTool extends BaseTool<"edit_file"> {
 		this.didSendPartialToolAsk = true
 		this.partialToolAskRelPath = relPath
 
-		const absolutePath = path.resolve(task.cwd, relPath)
+		const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			diff: operationPreview,
 			isOutsideWorkspace,
 		}

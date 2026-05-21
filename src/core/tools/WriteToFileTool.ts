@@ -9,8 +9,7 @@ import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
 import { fileExistsAtPath, createDirectoriesForFile } from "../../utils/fs"
 import { stripLineNumbers, everyLineHasLineNumbers } from "../../integrations/misc/extract-text"
-import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { convertNewFileToUnifiedDiff, computeDiffStats, sanitizeUnifiedDiff } from "../diff/stats"
@@ -47,7 +46,11 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			return
 		}
 
-		const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+		let fileExists: boolean
+		const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
+		const diffPath = absolutePath === path.resolve(task.cwd, relPath) ? relPath : absolutePath
+
+		const accessAllowed = task.rooIgnoreController?.validateAccess(absolutePath)
 
 		if (!accessAllowed) {
 			await task.say("rooignore_error", relPath)
@@ -55,10 +58,7 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			return
 		}
 
-		const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
-
-		let fileExists: boolean
-		const absolutePath = path.resolve(task.cwd, relPath)
+		const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 
 		if (task.diffViewProvider.editType !== undefined) {
 			fileExists = task.diffViewProvider.editType === "modify"
@@ -85,12 +85,12 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			newContent = unescapeHtmlEntities(newContent)
 		}
 
-		const fullPath = relPath ? path.resolve(task.cwd, relPath) : ""
+		const fullPath = relPath ? absolutePath : ""
 		const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: fileExists ? "editedExistingFile" : "newFileCreated",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			content: newContent,
 			isOutsideWorkspace,
 			isProtected: isWriteProtected,
@@ -111,7 +111,6 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			if (isPreventFocusDisruptionEnabled) {
 				task.diffViewProvider.editType = fileExists ? "modify" : "create"
 				if (fileExists) {
-					const absolutePath = path.resolve(task.cwd, relPath)
 					task.diffViewProvider.originalContent = await fs.readFile(absolutePath, "utf-8")
 				} else {
 					task.diffViewProvider.originalContent = ""
@@ -133,12 +132,12 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 					return
 				}
 
-				await task.diffViewProvider.saveDirectly(relPath, newContent, false, diagnosticsEnabled, writeDelayMs)
+				await task.diffViewProvider.saveDirectly(diffPath, newContent, false, diagnosticsEnabled, writeDelayMs)
 			} else {
 				if (!task.diffViewProvider.isEditing) {
 					const partialMessage = JSON.stringify(sharedMessageProps)
 					await task.ask("tool", partialMessage, true).catch(() => {})
-					await task.diffViewProvider.open(relPath)
+					await task.diffViewProvider.open(diffPath)
 				}
 
 				await task.diffViewProvider.update(
@@ -215,7 +214,8 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 
 		// relPath is guaranteed non-null after hasPathStabilized
 		let fileExists: boolean
-		const absolutePath = path.resolve(task.cwd, relPath!)
+		const absolutePath = await resolvePathInWorkspace(task.cwd, relPath!)
+		const diffPath = absolutePath === path.resolve(task.cwd, relPath!) ? relPath! : absolutePath
 
 		if (task.diffViewProvider.editType !== undefined) {
 			fileExists = task.diffViewProvider.editType === "modify"
@@ -230,12 +230,12 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			await createDirectoriesForFile(absolutePath)
 		}
 
-		const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath!) || false
+		const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: fileExists ? "editedExistingFile" : "newFileCreated",
-			path: getReadablePath(task.cwd, relPath!),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath!),
 			content: newContent || "",
 			isOutsideWorkspace,
 			isProtected: isWriteProtected,
@@ -246,7 +246,7 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 
 		if (newContent) {
 			if (!task.diffViewProvider.isEditing) {
-				await task.diffViewProvider.open(relPath!)
+				await task.diffViewProvider.open(diffPath)
 			}
 
 			await task.diffViewProvider.update(

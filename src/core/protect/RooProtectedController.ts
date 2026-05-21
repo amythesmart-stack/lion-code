@@ -1,6 +1,8 @@
 import path from "path"
 import ignore, { Ignore } from "ignore"
 
+import { getWorkspaceRelativePath } from "../../utils/pathUtils"
+
 export const SHIELD_SYMBOL = "\u{1F6E1}"
 
 /**
@@ -39,13 +41,11 @@ export class RooProtectedController {
 	 */
 	isWriteProtected(filePath: string): boolean {
 		try {
-			// Normalize path to be relative to cwd and use forward slashes
-			const absolutePath = path.resolve(this.cwd, filePath)
-			const relativePath = path.relative(this.cwd, absolutePath).toPosix()
+			const relativePath = getWorkspaceRelativePath(this.cwd, filePath)
 
 			// Paths outside the cwd start with ".." and can't match any protected pattern.
 			// The ignore library throws RangeError for such paths, so skip them early.
-			if (relativePath.startsWith("..")) {
+			if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
 				return false
 			}
 

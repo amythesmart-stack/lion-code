@@ -7,9 +7,21 @@ import { isPathOutsideWorkspace } from "../../../utils/pathUtils"
 import type { Task } from "../../task/Task"
 import { ApplyPatchTool } from "../ApplyPatchTool"
 
-vi.mock("../../../utils/pathUtils", () => ({
-	isPathOutsideWorkspace: vi.fn(),
-}))
+vi.mock("../../../utils/pathUtils", async () => {
+	const actual = await vi.importActual<typeof import("../../../utils/pathUtils")>("../../../utils/pathUtils")
+	return {
+		...actual,
+		isPathOutsideWorkspace: vi.fn(),
+		resolvePathInWorkspace: vi
+			.fn()
+			.mockImplementation(async (cwd: string, filePath: string) => path.resolve(cwd, filePath)),
+		getWorkspaceReadablePath: vi
+			.fn()
+			.mockImplementation(
+				(cwd: string, _absolutePath: string, fallbackPath?: string) => fallbackPath ?? path.basename(cwd),
+			),
+	}
+})
 
 interface PartialApplyPatchPayload {
 	tool: string

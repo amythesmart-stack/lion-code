@@ -1,10 +1,7 @@
-import path from "path"
-
 import { type ClineSayTool } from "@roo-code/types"
 
 import { Task } from "../task/Task"
-import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { regexSearchFiles } from "../../services/ripgrep"
 import type { ToolUse } from "../../shared/tools"
 
@@ -44,12 +41,12 @@ export class SearchFilesTool extends BaseTool<"search_files"> {
 
 		task.consecutiveMistakeCount = 0
 
-		const absolutePath = path.resolve(task.cwd, relDirPath)
+		const absolutePath = await resolvePathInWorkspace(task.cwd, relDirPath)
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "searchFiles",
-			path: getReadablePath(task.cwd, relDirPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relDirPath),
 			regex: regex,
 			filePattern: filePattern,
 			isOutsideWorkspace,
@@ -76,12 +73,12 @@ export class SearchFilesTool extends BaseTool<"search_files"> {
 		const regex = block.params.regex
 		const filePattern = block.params.file_pattern
 
-		const absolutePath = relDirPath ? path.resolve(task.cwd, relDirPath) : task.cwd
+		const absolutePath = relDirPath ? await resolvePathInWorkspace(task.cwd, relDirPath) : task.cwd
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "searchFiles",
-			path: getReadablePath(task.cwd, relDirPath ?? ""),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relDirPath ?? ""),
 			regex: regex ?? "",
 			filePattern: filePattern ?? "",
 			isOutsideWorkspace,

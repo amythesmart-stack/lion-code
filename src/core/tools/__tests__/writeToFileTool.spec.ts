@@ -39,9 +39,21 @@ vi.mock("../../prompts/responses", () => ({
 	},
 }))
 
-vi.mock("../../../utils/pathUtils", () => ({
-	isPathOutsideWorkspace: vi.fn().mockReturnValue(false),
-}))
+vi.mock("../../../utils/pathUtils", async () => {
+	const actual = await vi.importActual<typeof import("../../../utils/pathUtils")>("../../../utils/pathUtils")
+	return {
+		...actual,
+		isPathOutsideWorkspace: vi.fn().mockReturnValue(false),
+		resolvePathInWorkspace: vi
+			.fn()
+			.mockImplementation(async (cwd: string, filePath: string) => path.resolve(cwd, filePath)),
+		getWorkspaceReadablePath: vi
+			.fn()
+			.mockImplementation(
+				(_cwd: string, _absolutePath: string, fallbackPath?: string) => fallbackPath ?? "test/path.txt",
+			),
+	}
+})
 
 vi.mock("../../../utils/path", () => ({
 	getReadablePath: vi.fn().mockReturnValue("test/path.txt"),
@@ -239,7 +251,7 @@ describe("writeToFileTool", () => {
 		it("validates and allows access when rooIgnoreController permits", async () => {
 			await executeWriteFileTool({}, { accessAllowed: true })
 
-			expect(mockCline.rooIgnoreController.validateAccess).toHaveBeenCalledWith(testFilePath)
+			expect(mockCline.rooIgnoreController.validateAccess).toHaveBeenCalledWith(absoluteFilePath)
 			expect(mockCline.diffViewProvider.open).toHaveBeenCalledWith(testFilePath)
 		})
 	})

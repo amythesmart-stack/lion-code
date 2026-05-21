@@ -24,6 +24,7 @@ vi.mock("vscode", () => {
 
 	return {
 		workspace: {
+			workspaceFolders: undefined,
 			createFileSystemWatcher: vi.fn(() => ({
 				onDidCreate: vi.fn(() => mockDisposable),
 				onDidChange: vi.fn(() => mockDisposable),
@@ -63,6 +64,7 @@ describe("RooIgnoreController", () => {
 
 		// @ts-expect-error - Mocking
 		vscode.workspace.createFileSystemWatcher.mockReturnValue(mockWatcher)
+		;(vscode.workspace as any).workspaceFolders = undefined
 
 		// Setup fs mocks
 		mockFileExists = fileExistsAtPath as Mock<typeof fileExistsAtPath>
@@ -198,6 +200,27 @@ describe("RooIgnoreController", () => {
 			expect(controller.validateAccess(allowedAbsolutePath)).toBe(true)
 		})
 
+		it("should apply the .rooignore from a secondary workspace root for absolute paths", () => {
+			const secondaryRoot = "/test/secondary"
+			;(vscode.workspace as any).workspaceFolders = [
+				{ uri: { fsPath: TEST_CWD }, name: "primary", index: 0 },
+				{ uri: { fsPath: secondaryRoot }, name: "secondary", index: 1 },
+			]
+
+			vi.mocked(fsSync.existsSync).mockImplementation(
+				(filePath) => filePath === path.join(secondaryRoot, ".rooignore"),
+			)
+			vi.mocked(fsSync.readFileSync).mockImplementation((filePath) => {
+				if (filePath === path.join(secondaryRoot, ".rooignore")) {
+					return "private/**"
+				}
+				return ""
+			})
+
+			expect(controller.validateAccess(path.join(secondaryRoot, "private/secret.txt"))).toBe(false)
+			expect(controller.validateAccess(path.join(secondaryRoot, "src/app.ts"))).toBe(true)
+		})
+
 		/**
 		 * Tests handling of paths outside cwd
 		 */
@@ -315,6 +338,42 @@ describe("RooIgnoreController", () => {
 			expect(emptyController.validateCommand("cat node_modules/package.json")).toBeUndefined()
 			expect(emptyController.validateCommand("grep pattern .git/config")).toBeUndefined()
 		})
+
+		it("should enforce a secondary workspace .rooignore for execute_command paths", async () => {
+			const secondaryRoot = "/test/secondary"
+			;(vscode.workspace as any).workspaceFolders = [
+				{ uri: { fsPath: TEST_CWD }, name: "primary", index: 0 },
+				{ uri: { fsPath: secondaryRoot }, name: "secondary", index: 1 },
+			]
+
+			mockFileExists.mockImplementation(async (filePath) => filePath === path.join(TEST_CWD, ".rooignore"))
+			mockReadFile.mockResolvedValue("node_modules\n.git\nsecrets/**\n*.log")
+			await controller.initialize()
+
+			vi.mocked(fsSync.existsSync).mockImplementation(
+				(filePath) => filePath === path.join(secondaryRoot, ".rooignore"),
+			)
+			vi.mocked(fsSync.readFileSync).mockImplementation((filePath) => {
+				if (filePath === path.join(secondaryRoot, ".rooignore")) {
+					return "private/**"
+				}
+				return ""
+			})
+
+			expect(controller.validateCommand(`cat ${path.join(secondaryRoot, "private", "secret.txt")}`)).toBe(
+				path.join(secondaryRoot, "private", "secret.txt"),
+			)
+		})
+
+		it("should validate Windows absolute paths instead of treating them as PowerShell parameters", () => {
+			const windowsPath = String.raw`C:\secondary\private\secret.txt`
+			const validateAccessSpy = vi.spyOn(controller, "validateAccess").mockImplementation((candidate) => {
+				return candidate !== windowsPath
+			})
+
+			expect(controller.validateCommand(`type ${windowsPath}`)).toBe(windowsPath)
+			expect(validateAccessSpy).toHaveBeenCalledWith(windowsPath)
+		})
 	})
 
 	describe("filterPaths", () => {
@@ -410,6 +469,40 @@ describe("RooIgnoreController", () => {
 
 			const instructions = controller.getInstructions()
 			expect(instructions).toBeUndefined()
+		})
+
+		it("should include secondary workspace .rooignore content in instructions", async () => {
+			const secondaryRoot = "/test/secondary"
+			;(vscode.workspace as any).workspaceFolders = [
+				{ uri: { fsPath: TEST_CWD }, name: "primary", index: 0 },
+				{ uri: { fsPath: secondaryRoot }, name: "secondary", index: 1 },
+			]
+
+			mockFileExists.mockImplementation(async (filePath) => filePath === path.join(TEST_CWD, ".rooignore"))
+			mockReadFile.mockResolvedValue("node_modules")
+			await controller.initialize()
+
+			vi.mocked(fsSync.existsSync).mockImplementation(
+				(filePath) =>
+					filePath === path.join(secondaryRoot, ".rooignore") ||
+					filePath === path.join(TEST_CWD, ".rooignore"),
+			)
+			vi.mocked(fsSync.readFileSync).mockImplementation((filePath) => {
+				if (filePath === path.join(secondaryRoot, ".rooignore")) {
+					return "private/**"
+				}
+				if (filePath === path.join(TEST_CWD, ".rooignore")) {
+					return "node_modules"
+				}
+				return ""
+			})
+
+			const instructions = controller.getInstructions()
+
+			expect(instructions).toContain("## primary")
+			expect(instructions).toContain("## secondary")
+			expect(instructions).toContain("node_modules")
+			expect(instructions).toContain("private/**")
 		})
 	})
 

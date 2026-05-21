@@ -5,6 +5,8 @@ import fsSync from "fs"
 import ignore, { Ignore } from "ignore"
 import * as vscode from "vscode"
 
+import { getWorkspaceRelativePath, getWorkspaceRootForPath } from "../../utils/pathUtils"
+
 export const LOCK_TEXT_SYMBOL = "\u{1F512}"
 
 /**
@@ -15,6 +17,8 @@ export const LOCK_TEXT_SYMBOL = "\u{1F512}"
 export class RooIgnoreController {
 	private cwd: string
 	private ignoreInstance: Ignore
+	private ignoreInstances = new Map<string, Ignore>()
+	private rooIgnoreContents = new Map<string, string | undefined>()
 	private disposables: vscode.Disposable[] = []
 	rooIgnoreContent: string | undefined
 
@@ -38,19 +42,23 @@ export class RooIgnoreController {
 	 * Set up the file watcher for .rooignore changes
 	 */
 	private setupFileWatcher(): void {
-		const rooignorePattern = new vscode.RelativePattern(this.cwd, ".rooignore")
+		this.setupFileWatcherForRoot(this.cwd)
+	}
+
+	private setupFileWatcherForRoot(rootPath: string): void {
+		const rooignorePattern = new vscode.RelativePattern(rootPath, ".rooignore")
 		const fileWatcher = vscode.workspace.createFileSystemWatcher(rooignorePattern)
 
 		// Watch for changes and updates
 		this.disposables.push(
 			fileWatcher.onDidChange(() => {
-				this.loadRooIgnore()
+				this.loadRooIgnoreForRoot(rootPath)
 			}),
 			fileWatcher.onDidCreate(() => {
-				this.loadRooIgnore()
+				this.loadRooIgnoreForRoot(rootPath)
 			}),
 			fileWatcher.onDidDelete(() => {
-				this.loadRooIgnore()
+				this.loadRooIgnoreForRoot(rootPath)
 			}),
 		)
 
@@ -62,22 +70,75 @@ export class RooIgnoreController {
 	 * Load custom patterns from .rooignore if it exists
 	 */
 	private async loadRooIgnore(): Promise<void> {
+		await this.loadRooIgnoreForRoot(this.cwd)
+	}
+
+	private async loadRooIgnoreForRoot(rootPath: string): Promise<void> {
 		try {
 			// Reset ignore instance to prevent duplicate patterns
-			this.ignoreInstance = ignore()
-			const ignorePath = path.join(this.cwd, ".rooignore")
+			const ignoreInstance = ignore()
+			const ignorePath = path.join(rootPath, ".rooignore")
 			if (await fileExistsAtPath(ignorePath)) {
 				const content = await fs.readFile(ignorePath, "utf8")
-				this.rooIgnoreContent = content
-				this.ignoreInstance.add(content)
-				this.ignoreInstance.add(".rooignore")
+				ignoreInstance.add(content)
+				ignoreInstance.add(".rooignore")
+				this.ignoreInstances.set(rootPath, ignoreInstance)
+				this.rooIgnoreContents.set(rootPath, content)
 			} else {
-				this.rooIgnoreContent = undefined
+				this.ignoreInstances.set(rootPath, ignoreInstance)
+				this.rooIgnoreContents.set(rootPath, undefined)
+			}
+
+			if (rootPath === this.cwd) {
+				this.ignoreInstance = ignoreInstance
+				this.rooIgnoreContent = this.rooIgnoreContents.get(rootPath)
 			}
 		} catch (error) {
 			// Should never happen: reading file failed even though it exists
 			console.error("Unexpected error loading .rooignore:", error)
 		}
+	}
+
+	private getIgnoreStateForRoot(rootPath: string): { ignoreInstance: Ignore; content: string | undefined } {
+		const cached = this.ignoreInstances.get(rootPath)
+		if (cached) {
+			return { ignoreInstance: cached, content: this.rooIgnoreContents.get(rootPath) }
+		}
+
+		const ignoreInstance = ignore()
+		try {
+			const ignorePath = path.join(rootPath, ".rooignore")
+			if (fsSync.existsSync(ignorePath)) {
+				const content = fsSync.readFileSync(ignorePath, "utf8")
+				ignoreInstance.add(content)
+				ignoreInstance.add(".rooignore")
+				this.ignoreInstances.set(rootPath, ignoreInstance)
+				this.rooIgnoreContents.set(rootPath, content)
+				this.setupFileWatcherForRoot(rootPath)
+				return { ignoreInstance, content }
+			}
+		} catch (error) {
+			console.error("Unexpected error loading .rooignore:", error)
+		}
+
+		this.ignoreInstances.set(rootPath, ignoreInstance)
+		this.rooIgnoreContents.set(rootPath, undefined)
+		this.setupFileWatcherForRoot(rootPath)
+		return { ignoreInstance, content: undefined }
+	}
+
+	private getKnownWorkspaceRoots(): string[] {
+		const roots = new Set<string>([this.cwd])
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			roots.add(folder.uri.fsPath)
+		}
+		return [...roots]
+	}
+
+	private getAvailableIgnoreContents(): Array<{ rootPath: string; content: string }> {
+		return this.getKnownWorkspaceRoots()
+			.map((rootPath) => ({ rootPath, content: this.getIgnoreStateForRoot(rootPath).content }))
+			.filter((entry): entry is { rootPath: string; content: string } => typeof entry.content === "string")
 	}
 
 	/**
@@ -87,13 +148,21 @@ export class RooIgnoreController {
 	 * @returns true if file is accessible, false if ignored
 	 */
 	validateAccess(filePath: string): boolean {
-		// Always allow access if .rooignore does not exist
-		if (!this.rooIgnoreContent) {
+		const absolutePath = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(this.cwd, filePath)
+		const rootPath = getWorkspaceRootForPath(absolutePath, this.cwd)
+
+		// Preserve backward compatibility for files outside the task workspace roots.
+		if (!rootPath) {
 			return true
 		}
-		try {
-			const absolutePath = path.resolve(this.cwd, filePath)
 
+		const { ignoreInstance, content } = this.getIgnoreStateForRoot(rootPath)
+		// Always allow access if .rooignore does not exist
+		if (!content) {
+			return true
+		}
+
+		try {
 			// Follow symlinks to get the real path
 			let realPath: string
 			try {
@@ -105,10 +174,10 @@ export class RooIgnoreController {
 			}
 
 			// Convert real path to relative for .rooignore checking
-			const relativePath = path.relative(this.cwd, realPath).toPosix()
+			const relativePath = getWorkspaceRelativePath(rootPath, realPath)
 
 			// Check if the real path is ignored
-			return !this.ignoreInstance.ignores(relativePath)
+			return !ignoreInstance.ignores(relativePath)
 		} catch (error) {
 			// Allow access to files outside cwd or on errors (backward compatibility)
 			return true
@@ -121,11 +190,6 @@ export class RooIgnoreController {
 	 * @returns path of file that is being accessed if it is being accessed, undefined if command is allowed
 	 */
 	validateCommand(command: string): string | undefined {
-		// Always allow if no .rooignore exists
-		if (!this.rooIgnoreContent) {
-			return undefined
-		}
-
 		// Split command into parts and get the base command
 		const parts = command.trim().split(/\s+/)
 		const baseCommand = parts[0].toLowerCase()
@@ -153,12 +217,13 @@ export class RooIgnoreController {
 			// Check each argument that could be a file path
 			for (let i = 1; i < parts.length; i++) {
 				const arg = parts[i]
+				const isWindowsAbsolutePath = path.win32.isAbsolute(arg)
 				// Skip command flags/options (both Unix and PowerShell style)
-				if (arg.startsWith("-") || arg.startsWith("/")) {
+				if (arg.startsWith("-") || (arg.startsWith("/") && !path.isAbsolute(arg))) {
 					continue
 				}
 				// Ignore PowerShell parameter names
-				if (arg.includes(":")) {
+				if (arg.includes(":") && !isWindowsAbsolutePath) {
 					continue
 				}
 				// Validate file access
@@ -204,10 +269,21 @@ export class RooIgnoreController {
 	 * @returns Formatted instructions or undefined if .rooignore doesn't exist
 	 */
 	getInstructions(): string | undefined {
-		if (!this.rooIgnoreContent) {
+		const ignoreEntries = this.getAvailableIgnoreContents()
+		if (ignoreEntries.length === 0) {
 			return undefined
 		}
 
-		return `# .rooignore\n\n(The following is provided by a root-level .rooignore file where the user has specified files and directories that should not be accessed. When using list_files, you'll notice a ${LOCK_TEXT_SYMBOL} next to files that are blocked. Attempting to access the file's contents e.g. through read_file will result in an error.)\n\n${this.rooIgnoreContent}\n.rooignore`
+		const sections = ignoreEntries
+			.map(({ rootPath, content }) => {
+				const workspaceName =
+					vscode.workspace.workspaceFolders?.find((folder) => folder.uri.fsPath === rootPath)?.name ??
+					path.basename(rootPath) ??
+					rootPath
+				return `## ${workspaceName}\n\n${content}\n.rooignore`
+			})
+			.join("\n\n")
+
+		return `# .rooignore\n\n(The following is provided by workspace-root .rooignore files where the user has specified files and directories that should not be accessed. When using list_files, you'll notice a ${LOCK_TEXT_SYMBOL} next to files that are blocked. Attempting to access the file's contents e.g. through read_file will result in an error.)\n\n${sections}`
 	}
 }

@@ -18,7 +18,7 @@ import { isLegacyReadFileParams, type ClineSayTool } from "@roo-code/types"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { getReadablePath } from "../../utils/path"
 import { extractTextFromFile, addLineNumbers, getSupportedBinaryFormats } from "../../integrations/misc/extract-text"
 import { readWithIndentation, readWithSlice } from "../../integrations/misc/indentation-reader"
@@ -145,9 +145,10 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 			for (const fileResult of fileResults) {
 				const relPath = fileResult.path
+				const fullPath = await resolvePathInWorkspace(task.cwd, relPath)
 
 				// RooIgnore validation
-				const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+				const accessAllowed = task.rooIgnoreController?.validateAccess(fullPath)
 				if (!accessAllowed) {
 					await task.say("rooignore_error", relPath)
 					const errorMsg = formatResponse.rooIgnoreError(relPath)
@@ -177,7 +178,7 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 				if (fileResult.status !== "approved") continue
 
 				const relPath = fileResult.path
-				const fullPath = path.resolve(task.cwd, relPath)
+				const fullPath = await resolvePathInWorkspace(task.cwd, relPath)
 				const entry = fileResult.entry!
 
 				try {
@@ -433,17 +434,19 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 		if (filesToApprove.length > 1) {
 			// Batch approval
-			const batchFiles = filesToApprove.map((fileResult) => {
-				const relPath = fileResult.path
-				const fullPath = path.resolve(task.cwd, relPath)
-				const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
-				const readablePath = getReadablePath(task.cwd, relPath)
+			const batchFiles = await Promise.all(
+				filesToApprove.map(async (fileResult) => {
+					const relPath = fileResult.path
+					const fullPath = await resolvePathInWorkspace(task.cwd, relPath)
+					const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
+					const readablePath = getWorkspaceReadablePath(task.cwd, fullPath, relPath)
 
-				const lineSnippet = this.getLineSnippet(fileResult.entry!)
-				const key = `${readablePath}${lineSnippet ? ` (${lineSnippet})` : ""}`
+					const lineSnippet = this.getLineSnippet(fileResult.entry!)
+					const key = `${readablePath}${lineSnippet ? ` (${lineSnippet})` : ""}`
 
-				return { path: readablePath, lineSnippet, isOutsideWorkspace, key, content: fullPath }
-			})
+					return { path: readablePath, lineSnippet, isOutsideWorkspace, key, content: fullPath }
+				}),
+			)
 
 			const completeMessage = JSON.stringify({ tool: "readFile", batchFiles } satisfies ClineSayTool)
 			const { response, text, images } = await task.ask("tool", completeMessage, false)
@@ -500,15 +503,16 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 			// Single file approval
 			const fileResult = filesToApprove[0]
 			const relPath = fileResult.path
-			const fullPath = path.resolve(task.cwd, relPath)
+			const fullPath = await resolvePathInWorkspace(task.cwd, relPath)
 			const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
+			const readablePath = getWorkspaceReadablePath(task.cwd, fullPath, relPath)
 			const lineSnippet = this.getLineSnippet(fileResult.entry!)
 
 			const startLine = this.getStartLine(fileResult.entry!)
 
 			const completeMessage = JSON.stringify({
 				tool: "readFile",
-				path: getReadablePath(task.cwd, relPath),
+				path: readablePath,
 				isOutsideWorkspace,
 				content: fullPath,
 				reason: lineSnippet,
@@ -647,10 +651,12 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 			}
 		}
 
-		const fullPath = filePath ? path.resolve(task.cwd, filePath) : ""
+		const fullPath = filePath ? await resolvePathInWorkspace(task.cwd, filePath) : ""
 		const sharedMessageProps: ClineSayTool = {
 			tool: "readFile",
-			path: getReadablePath(task.cwd, filePath),
+			path: filePath
+				? getWorkspaceReadablePath(task.cwd, fullPath, filePath)
+				: getReadablePath(task.cwd, filePath),
 			isOutsideWorkspace: filePath ? isPathOutsideWorkspace(fullPath) : false,
 		}
 		const partialMessage = JSON.stringify({
@@ -686,10 +692,10 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 		for (const entry of fileEntries) {
 			const relPath = entry.path
-			const fullPath = path.resolve(task.cwd, relPath)
+			const fullPath = await resolvePathInWorkspace(task.cwd, relPath)
 
 			// RooIgnore validation
-			const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+			const accessAllowed = task.rooIgnoreController?.validateAccess(fullPath)
 			if (!accessAllowed) {
 				await task.say("rooignore_error", relPath)
 				const errorMsg = formatResponse.rooIgnoreError(relPath)
@@ -699,6 +705,7 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 			// Request approval for single file
 			const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
+			const readablePath = getWorkspaceReadablePath(task.cwd, fullPath, relPath)
 			let lineSnippet = ""
 			if (entry.lineRanges && entry.lineRanges.length > 0) {
 				const ranges = entry.lineRanges.map((range: LineRange) => `(lines ${range.start}-${range.end})`)
@@ -707,7 +714,7 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 			const completeMessage = JSON.stringify({
 				tool: "readFile",
-				path: getReadablePath(task.cwd, relPath),
+				path: readablePath,
 				isOutsideWorkspace,
 				content: fullPath,
 				reason: lineSnippet || undefined,

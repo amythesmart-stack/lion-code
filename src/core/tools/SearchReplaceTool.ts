@@ -3,8 +3,7 @@ import path from "path"
 
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
-import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
@@ -69,7 +68,10 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 				relPath = file_path
 			}
 
-			const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+			const absolutePath = await resolvePathInWorkspace(task.cwd, file_path)
+			const diffPath = absolutePath === path.resolve(task.cwd, relPath) ? relPath : absolutePath
+
+			const accessAllowed = task.rooIgnoreController?.validateAccess(absolutePath)
 
 			if (!accessAllowed) {
 				await task.say("rooignore_error", relPath)
@@ -78,9 +80,7 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 			}
 
 			// Check if file is write-protected
-			const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
-
-			const absolutePath = path.resolve(task.cwd, relPath)
+			const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 
 			const fileExists = await fileExistsAtPath(absolutePath)
 			if (!fileExists) {
@@ -174,7 +174,7 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 
 			const sharedMessageProps: ClineSayTool = {
 				tool: "appliedDiff",
-				path: getReadablePath(task.cwd, relPath),
+				path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 				diff: sanitizedDiff,
 				isOutsideWorkspace,
 			}
@@ -188,7 +188,7 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 
 			// Show diff view if focus disruption prevention is disabled
 			if (!isPreventFocusDisruptionEnabled) {
-				await task.diffViewProvider.open(relPath)
+				await task.diffViewProvider.open(diffPath)
 				await task.diffViewProvider.update(newContent, true)
 				task.diffViewProvider.scrollToFirstDiff()
 			}
@@ -208,7 +208,7 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 			// Save the changes
 			if (isPreventFocusDisruptionEnabled) {
 				// Direct file write without diff view or opening the file
-				await task.diffViewProvider.saveDirectly(relPath, newContent, false, diagnosticsEnabled, writeDelayMs)
+				await task.diffViewProvider.saveDirectly(diffPath, newContent, false, diagnosticsEnabled, writeDelayMs)
 			} else {
 				// Call saveChanges to update the DiffViewProvider properties
 				await task.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
@@ -261,12 +261,12 @@ export class SearchReplaceTool extends BaseTool<"search_replace"> {
 			relPath = path.relative(task.cwd, relPath)
 		}
 
-		const absolutePath = path.resolve(task.cwd, relPath)
+		const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			diff: operationPreview,
 			isOutsideWorkspace,
 		}

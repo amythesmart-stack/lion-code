@@ -4,7 +4,7 @@ import fs from "fs/promises"
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
-import { getReadablePath } from "../../utils/path"
+import { getWorkspaceReadablePath, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { fileExistsAtPath } from "../../utils/fs"
@@ -47,7 +47,10 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 				return
 			}
 
-			const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+			const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
+			const diffPath = absolutePath === path.resolve(task.cwd, relPath) ? relPath : absolutePath
+
+			const accessAllowed = task.rooIgnoreController?.validateAccess(absolutePath)
 
 			if (!accessAllowed) {
 				await task.say("rooignore_error", relPath)
@@ -55,7 +58,6 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 				return
 			}
 
-			const absolutePath = path.resolve(task.cwd, relPath)
 			const fileExists = await fileExistsAtPath(absolutePath)
 
 			if (!fileExists) {
@@ -136,11 +138,11 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 			)
 
 			// Check if file is write-protected
-			const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
+			const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 
 			const sharedMessageProps: ClineSayTool = {
 				tool: "appliedDiff",
-				path: getReadablePath(task.cwd, relPath),
+				path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 				diff: diffContent,
 			}
 
@@ -177,7 +179,7 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 				task.diffViewProvider.editType = "modify"
 				task.diffViewProvider.originalContent = originalContent
 				await task.diffViewProvider.saveDirectly(
-					relPath,
+					diffPath,
 					diffResult.content,
 					false,
 					diagnosticsEnabled,
@@ -187,7 +189,7 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 				// Original behavior with diff view
 				// Show diff view before asking for approval
 				task.diffViewProvider.editType = "modify"
-				await task.diffViewProvider.open(relPath)
+				await task.diffViewProvider.open(diffPath)
 				await task.diffViewProvider.update(diffResult.content, true)
 				task.diffViewProvider.scrollToFirstDiff()
 
@@ -278,9 +280,10 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 			return
 		}
 
+		const absolutePath = relPath ? await resolvePathInWorkspace(task.cwd, relPath) : task.cwd
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: relPath ? getWorkspaceReadablePath(task.cwd, absolutePath, relPath) : "",
 			diff: diffContent,
 		}
 

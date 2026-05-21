@@ -8,6 +8,7 @@ import fs from "fs/promises"
 import { ContextProxy } from "../config/ContextProxy"
 import type { FileMetadataEntry, RecordSource, TaskMetadata } from "./FileContextTrackerTypes"
 import { ClineProvider } from "../webview/ClineProvider"
+import { getWorkspaceReadablePath, resolvePathInWorkspace } from "../../utils/pathUtils"
 
 // This class is responsible for tracking file operations that may result in stale context.
 // If a user modifies a file outside of Roo, the context may become stale and need to be updated.
@@ -45,7 +46,7 @@ export class FileContextTracker {
 	}
 
 	// File watchers are set up for each file that is tracked in the task metadata.
-	async setupFileWatcher(filePath: string) {
+	async setupFileWatcher(filePath: string, absolutePath?: string) {
 		// Only setup watcher if it doesn't already exist for this file
 		if (this.fileWatchers.has(filePath)) {
 			return
@@ -57,7 +58,7 @@ export class FileContextTracker {
 		}
 
 		// Create a file system watcher for this specific file
-		const fileUri = vscode.Uri.file(path.resolve(cwd, filePath))
+		const fileUri = vscode.Uri.file(absolutePath ?? (await resolvePathInWorkspace(cwd, filePath)))
 		const watcher = vscode.workspace.createFileSystemWatcher(
 			new vscode.RelativePattern(path.dirname(fileUri.fsPath), path.basename(fileUri.fsPath)),
 		)
@@ -85,10 +86,13 @@ export class FileContextTracker {
 				return
 			}
 
-			await this.addFileToFileContextTracker(this.taskId, filePath, operation)
+			const absolutePath = await resolvePathInWorkspace(cwd, filePath)
+			const trackedPath = getWorkspaceReadablePath(cwd, absolutePath, filePath)
+
+			await this.addFileToFileContextTracker(this.taskId, trackedPath, operation)
 
 			// Set up file watcher for this file
-			await this.setupFileWatcher(filePath)
+			await this.setupFileWatcher(trackedPath, absolutePath)
 		} catch (error) {
 			console.error("Failed to track file operation:", error)
 		}

@@ -1,11 +1,20 @@
 import path from "path"
 import { RooProtectedController } from "../RooProtectedController"
 
+vi.mock("vscode", () => ({
+	workspace: {
+		workspaceFolders: undefined,
+	},
+}))
+
+import * as vscode from "vscode"
+
 describe("RooProtectedController", () => {
 	const TEST_CWD = "/test/workspace"
 	let controller: RooProtectedController
 
 	beforeEach(() => {
+		;(vscode.workspace as any).workspaceFolders = undefined
 		controller = new RooProtectedController(TEST_CWD)
 	})
 
@@ -85,6 +94,17 @@ describe("RooProtectedController", () => {
 		it("should handle absolute paths by converting to relative", () => {
 			const absolutePath = path.join(TEST_CWD, ".rooignore")
 			expect(controller.isWriteProtected(absolutePath)).toBe(true)
+		})
+
+		it("should protect absolute paths inside secondary workspace roots", () => {
+			const secondaryRoot = "/test/secondary"
+			;(vscode.workspace as any).workspaceFolders = [
+				{ uri: { fsPath: TEST_CWD }, name: "primary", index: 0 },
+				{ uri: { fsPath: secondaryRoot }, name: "secondary", index: 1 },
+			]
+
+			expect(controller.isWriteProtected(path.join(secondaryRoot, "AGENTS.md"))).toBe(true)
+			expect(controller.isWriteProtected(path.join(secondaryRoot, "src/index.ts"))).toBe(false)
 		})
 
 		it("should handle paths with different separators", () => {

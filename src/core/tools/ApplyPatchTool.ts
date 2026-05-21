@@ -3,8 +3,7 @@ import path from "path"
 
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
-import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getWorkspaceReadablePath, isPathOutsideWorkspace, resolvePathInWorkspace } from "../../utils/pathUtils"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
@@ -87,7 +86,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 			// Process each hunk
 			const readFile = async (filePath: string): Promise<string> => {
-				const absolutePath = path.resolve(task.cwd, filePath)
+				const absolutePath = await resolvePathInWorkspace(task.cwd, filePath)
 				return await fs.readFile(absolutePath, "utf8")
 			}
 
@@ -105,10 +104,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			// Process each file change
 			for (const change of changes) {
 				const relPath = change.path
-				const absolutePath = path.resolve(task.cwd, relPath)
+				const absolutePath = await resolvePathInWorkspace(task.cwd, relPath)
+				const diffPath = absolutePath === path.resolve(task.cwd, relPath) ? relPath : absolutePath
 
 				// Check access permissions
-				const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
+				const accessAllowed = task.rooIgnoreController?.validateAccess(absolutePath)
 				if (!accessAllowed) {
 					await task.say("rooignore_error", relPath)
 					pushToolResult(formatResponse.rooIgnoreError(relPath))
@@ -116,17 +116,25 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 				}
 
 				// Check if file is write-protected
-				const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
+				const isWriteProtected = task.rooProtectedController?.isWriteProtected(absolutePath) || false
 
 				if (change.type === "add") {
 					// Create new file
-					await this.handleAddFile(change, absolutePath, relPath, task, callbacks, isWriteProtected)
+					await this.handleAddFile(change, absolutePath, diffPath, relPath, task, callbacks, isWriteProtected)
 				} else if (change.type === "delete") {
 					// Delete file
 					await this.handleDeleteFile(absolutePath, relPath, task, callbacks, isWriteProtected)
 				} else if (change.type === "update") {
 					// Update file
-					await this.handleUpdateFile(change, absolutePath, relPath, task, callbacks, isWriteProtected)
+					await this.handleUpdateFile(
+						change,
+						absolutePath,
+						diffPath,
+						relPath,
+						task,
+						callbacks,
+						isWriteProtected,
+					)
 				}
 			}
 
@@ -141,6 +149,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 	private async handleAddFile(
 		change: ApplyPatchFileChange,
 		absolutePath: string,
+		diffPath: string,
 		relPath: string,
 		task: Task,
 		callbacks: ToolCallbacks,
@@ -183,7 +192,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			diff: sanitizedDiff,
 			isOutsideWorkspace,
 		}
@@ -197,7 +206,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		// Show diff view if focus disruption prevention is disabled
 		if (!isPreventFocusDisruptionEnabled) {
-			await task.diffViewProvider.open(relPath)
+			await task.diffViewProvider.open(diffPath)
 			await task.diffViewProvider.update(newContent, true)
 			task.diffViewProvider.scrollToFirstDiff()
 		}
@@ -215,7 +224,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		// Save the changes
 		if (isPreventFocusDisruptionEnabled) {
-			await task.diffViewProvider.saveDirectly(relPath, newContent, true, diagnosticsEnabled, writeDelayMs)
+			await task.diffViewProvider.saveDirectly(diffPath, newContent, true, diagnosticsEnabled, writeDelayMs)
 		} else {
 			await task.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
 		}
@@ -254,7 +263,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			diff: `File will be deleted: ${relPath}`,
 			isOutsideWorkspace,
 		}
@@ -290,6 +299,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 	private async handleUpdateFile(
 		change: ApplyPatchFileChange,
 		absolutePath: string,
+		diffPath: string,
 		relPath: string,
 		task: Task,
 		callbacks: ToolCallbacks,
@@ -339,7 +349,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: getReadablePath(task.cwd, relPath),
+			path: getWorkspaceReadablePath(task.cwd, absolutePath, relPath),
 			diff: sanitizedDiff,
 			originalContent,
 			isOutsideWorkspace,
@@ -354,7 +364,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		// Show diff view if focus disruption prevention is disabled
 		if (!isPreventFocusDisruptionEnabled) {
-			await task.diffViewProvider.open(relPath)
+			await task.diffViewProvider.open(diffPath)
 			await task.diffViewProvider.update(newContent, true)
 			task.diffViewProvider.scrollToFirstDiff()
 		}
@@ -372,10 +382,12 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		// Handle file move if specified
 		if (change.movePath) {
-			const moveAbsolutePath = path.resolve(task.cwd, change.movePath)
+			const moveAbsolutePath = await resolvePathInWorkspace(task.cwd, change.movePath)
+			const moveDiffPath =
+				moveAbsolutePath === path.resolve(task.cwd, change.movePath) ? change.movePath : moveAbsolutePath
 
 			// Validate destination path access permissions
-			const moveAccessAllowed = task.rooIgnoreController?.validateAccess(change.movePath)
+			const moveAccessAllowed = task.rooIgnoreController?.validateAccess(moveAbsolutePath)
 			if (!moveAccessAllowed) {
 				await task.say("rooignore_error", change.movePath)
 				pushToolResult(formatResponse.rooIgnoreError(change.movePath))
@@ -384,7 +396,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			}
 
 			// Check if destination path is write-protected
-			const isMovePathWriteProtected = task.rooProtectedController?.isWriteProtected(change.movePath) || false
+			const isMovePathWriteProtected = task.rooProtectedController?.isWriteProtected(moveAbsolutePath) || false
 			if (isMovePathWriteProtected) {
 				task.consecutiveMistakeCount++
 				task.recordToolError("apply_patch")
@@ -410,7 +422,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			// Save new content to the new path
 			if (isPreventFocusDisruptionEnabled) {
 				await task.diffViewProvider.saveDirectly(
-					change.movePath,
+					moveDiffPath,
 					newContent,
 					false,
 					diagnosticsEnabled,
@@ -434,7 +446,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 		} else {
 			// Save changes to the same file
 			if (isPreventFocusDisruptionEnabled) {
-				await task.diffViewProvider.saveDirectly(relPath, newContent, false, diagnosticsEnabled, writeDelayMs)
+				await task.diffViewProvider.saveDirectly(diffPath, newContent, false, diagnosticsEnabled, writeDelayMs)
 			} else {
 				await task.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
 			}
@@ -455,8 +467,10 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 		const candidateRelPath = this.extractFirstPathFromPatch(patch)
 		const fallbackDisplayPath = path.basename(task.cwd) || "workspace"
 		const resolvedRelPath = candidateRelPath ?? ""
-		const absolutePath = path.resolve(task.cwd, resolvedRelPath)
-		const displayPath = candidateRelPath ? getReadablePath(task.cwd, candidateRelPath) : fallbackDisplayPath
+		const absolutePath = candidateRelPath ? await resolvePathInWorkspace(task.cwd, resolvedRelPath) : task.cwd
+		const displayPath = candidateRelPath
+			? getWorkspaceReadablePath(task.cwd, absolutePath, candidateRelPath)
+			: fallbackDisplayPath
 
 		let patchPreview: string | undefined
 		if (patch) {

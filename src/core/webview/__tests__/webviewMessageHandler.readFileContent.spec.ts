@@ -40,17 +40,30 @@ vi.mock("../../../utils/fs")
 vi.mock("../../../utils/path")
 vi.mock("../../../utils/globalContext")
 
-vi.mock("../../../utils/pathUtils", () => ({
-	isPathOutsideWorkspace: vi.fn((filePath: string) => {
-		const nodePath = require("path")
-		const normalized = nodePath.resolve(filePath)
-		const workspaceRoot = nodePath.resolve("/mock/workspace")
-		// Path is inside workspace if it equals or is under workspace root
-		if (normalized === workspaceRoot) return false
-		if (normalized.startsWith(workspaceRoot + nodePath.sep)) return false
-		return true
-	}),
-}))
+vi.mock("../../../utils/pathUtils", async () => {
+	const actual = await vi.importActual<typeof import("../../../utils/pathUtils")>("../../../utils/pathUtils")
+	return {
+		...actual,
+		isPathOutsideWorkspace: vi.fn((filePath: string) => {
+			const nodePath = require("path")
+			const normalized = nodePath.resolve(filePath)
+			const workspaceRoot = nodePath.resolve("/mock/workspace")
+			// Path is inside workspace if it equals or is under workspace root
+			if (normalized === workspaceRoot) return false
+			if (normalized.startsWith(workspaceRoot + nodePath.sep)) return false
+			return true
+		}),
+		resolvePathInWorkspace: vi.fn().mockImplementation(async (cwd: string, filePath: string) => {
+			const nodePath = require("path")
+			return nodePath.resolve(cwd, filePath)
+		}),
+		getWorkspaceReadablePath: vi
+			.fn()
+			.mockImplementation(
+				(_cwd: string, _absolutePath: string, fallbackPath?: string) => fallbackPath ?? "mock/workspace",
+			),
+	}
+})
 
 vi.mock("../../mentions/resolveImageMentions", () => ({
 	resolveImageMentions: vi.fn(async ({ text, images }: { text: string; images?: string[] }) => ({
