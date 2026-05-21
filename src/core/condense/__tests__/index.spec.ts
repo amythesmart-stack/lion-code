@@ -27,8 +27,10 @@ vi.mock("../../../api/transform/image-cleaning", () => ({
 
 vi.mock("@roo-code/telemetry", () => ({
 	TelemetryService: {
+		hasInstance: vi.fn(() => true),
 		instance: {
 			captureContextCondensed: vi.fn(),
+			captureException: vi.fn(),
 		},
 	},
 }))
