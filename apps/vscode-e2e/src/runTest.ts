@@ -27,7 +27,12 @@ function isDeepSeekTargetedRun(testFile?: string, testGrep?: string) {
 }
 
 function isMultiRootTargetedRun(testFile?: string, testGrep?: string) {
-	if (testFile?.toLowerCase().includes("multi-root-read-file-content.test")) {
+	if (testFile?.toLowerCase().includes("multi-root-read-file-content")) {
+		return true
+	}
+
+	if (!testFile && !testGrep) {
+		// The default mocked CI path runs the whole suite, which includes the multi-root repro.
 		return true
 	}
 
