@@ -45,7 +45,6 @@ describe("Model Validation Functions", () => {
 		lmstudio: {},
 		"vercel-ai-gateway": {},
 		"zoo-gateway": {},
-		roo: {},
 		poe: {},
 		deepseek: {},
 	}

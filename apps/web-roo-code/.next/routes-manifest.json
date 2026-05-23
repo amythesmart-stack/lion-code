@@ -1,0 +1,224 @@
+{
+	"version": 3,
+	"pages404": true,
+	"appType": "app",
+	"caseSensitive": false,
+	"basePath": "",
+	"redirects": [
+		{
+			"source": "/:path+/",
+			"destination": "/:path+",
+			"internal": true,
+			"priority": true,
+			"statusCode": 308,
+			"regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+		},
+		{
+			"source": "/:path*",
+			"has": [
+				{
+					"type": "host",
+					"value": "www.roocode.com"
+				}
+			],
+			"destination": "https://roocode.com/:path*",
+			"statusCode": 308,
+			"regex": "^(?!/_next)(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+		},
+		{
+			"source": "/:path*",
+			"has": [
+				{
+					"type": "header",
+					"key": "x-forwarded-proto",
+					"value": "http"
+				}
+			],
+			"destination": "https://roocode.com/:path*",
+			"statusCode": 308,
+			"regex": "^(?!/_next)(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+		},
+		{
+			"source": "/cloud-waitlist",
+			"destination": "https://roo-code.notion.site/238fd1401b0a8087b858e1ad431507cf?pvs=105",
+			"statusCode": 307,
+			"regex": "^(?!/_next)/cloud-waitlist(?:/)?$"
+		},
+		{
+			"source": "/provider/pricing",
+			"destination": "/provider",
+			"statusCode": 308,
+			"regex": "^(?!/_next)/provider/pricing(?:/)?$"
+		}
+	],
+	"headers": [],
+	"rewrites": {
+		"beforeFiles": [],
+		"afterFiles": [],
+		"fallback": []
+	},
+	"dynamicRoutes": [
+		{
+			"page": "/blog/page/[page]",
+			"regex": "^/blog/page/([^/]+?)(?:/)?$",
+			"routeKeys": {
+				"nxtPpage": "nxtPpage"
+			},
+			"namedRegex": "^/blog/page/(?<nxtPpage>[^/]+?)(?:/)?$"
+		},
+		{
+			"page": "/blog/[slug]",
+			"regex": "^/blog/([^/]+?)(?:/)?$",
+			"routeKeys": {
+				"nxtPslug": "nxtPslug"
+			},
+			"namedRegex": "^/blog/(?<nxtPslug>[^/]+?)(?:/)?$"
+		}
+	],
+	"staticRoutes": [
+		{
+			"page": "/",
+			"regex": "^/(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/(?:/)?$"
+		},
+		{
+			"page": "/_global-error",
+			"regex": "^/_global\\-error(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/_global\\-error(?:/)?$"
+		},
+		{
+			"page": "/_not-found",
+			"regex": "^/_not\\-found(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/_not\\-found(?:/)?$"
+		},
+		{
+			"page": "/api/og",
+			"regex": "^/api/og(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/api/og(?:/)?$"
+		},
+		{
+			"page": "/blog",
+			"regex": "^/blog(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/blog(?:/)?$"
+		},
+		{
+			"page": "/cloud",
+			"regex": "^/cloud(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/cloud(?:/)?$"
+		},
+		{
+			"page": "/cloud/team",
+			"regex": "^/cloud/team(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/cloud/team(?:/)?$"
+		},
+		{
+			"page": "/enterprise",
+			"regex": "^/enterprise(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/enterprise(?:/)?$"
+		},
+		{
+			"page": "/evals",
+			"regex": "^/evals(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/evals(?:/)?$"
+		},
+		{
+			"page": "/extension",
+			"regex": "^/extension(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/extension(?:/)?$"
+		},
+		{
+			"page": "/legal/cookies",
+			"regex": "^/legal/cookies(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/legal/cookies(?:/)?$"
+		},
+		{
+			"page": "/legal/subprocessors",
+			"regex": "^/legal/subprocessors(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/legal/subprocessors(?:/)?$"
+		},
+		{
+			"page": "/linear",
+			"regex": "^/linear(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/linear(?:/)?$"
+		},
+		{
+			"page": "/pr-fixer",
+			"regex": "^/pr\\-fixer(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/pr\\-fixer(?:/)?$"
+		},
+		{
+			"page": "/pricing",
+			"regex": "^/pricing(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/pricing(?:/)?$"
+		},
+		{
+			"page": "/privacy",
+			"regex": "^/privacy(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/privacy(?:/)?$"
+		},
+		{
+			"page": "/provider",
+			"regex": "^/provider(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/provider(?:/)?$"
+		},
+		{
+			"page": "/reviewer",
+			"regex": "^/reviewer(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/reviewer(?:/)?$"
+		},
+		{
+			"page": "/robots.txt",
+			"regex": "^/robots\\.txt(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/robots\\.txt(?:/)?$"
+		},
+		{
+			"page": "/slack",
+			"regex": "^/slack(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/slack(?:/)?$"
+		},
+		{
+			"page": "/terms",
+			"regex": "^/terms(?:/)?$",
+			"routeKeys": {},
+			"namedRegex": "^/terms(?:/)?$"
+		}
+	],
+	"dataRoutes": [],
+	"rsc": {
+		"header": "rsc",
+		"varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+		"prefetchHeader": "next-router-prefetch",
+		"didPostponeHeader": "x-nextjs-postponed",
+		"contentTypeHeader": "text/x-component",
+		"suffix": ".rsc",
+		"prefetchSegmentHeader": "next-router-segment-prefetch",
+		"prefetchSegmentSuffix": ".segment.rsc",
+		"prefetchSegmentDirSuffix": ".segments",
+		"clientParamParsing": false,
+		"dynamicRSCPrerender": false
+	},
+	"rewriteHeaders": {
+		"pathHeader": "x-nextjs-rewritten-path",
+		"queryHeader": "x-nextjs-rewritten-query"
+	}
+}

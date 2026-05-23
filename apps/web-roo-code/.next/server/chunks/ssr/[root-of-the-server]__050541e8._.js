@@ -1,0 +1,54 @@
+module.exports = [
+	93695,
+	(a, b, c) => {
+		b.exports = a.x("next/dist/shared/lib/no-fallback-error.external.js", () =>
+			require("next/dist/shared/lib/no-fallback-error.external.js"),
+		)
+	},
+	4776,
+	(a) => {
+		a.n(a.i(80606))
+	},
+	99376,
+	(a) => {
+		a.n(a.i(44673))
+	},
+	96860,
+	(a) => {
+		a.n(a.i(92386))
+	},
+	28656,
+	(a) => {
+		a.n(a.i(79868))
+	},
+	29365,
+	(a) => {
+		a.n(a.i(16472))
+	},
+	79868,
+	(a, b, c) => {
+		"use strict"
+		Object.defineProperty(c, "__esModule", { value: !0 }),
+			Object.defineProperty(c, "default", {
+				enumerable: !0,
+				get: function () {
+					return f
+				},
+			})
+		let d = a.r(1020),
+			e = a.r(63188)
+		function f() {
+			return (0, d.jsx)(e.HTTPAccessErrorFallback, {
+				status: 401,
+				message: "You're not authorized to access this page.",
+			})
+		}
+		;("function" == typeof c.default || ("object" == typeof c.default && null !== c.default)) &&
+			void 0 === c.default.__esModule &&
+			(Object.defineProperty(c.default, "__esModule", { value: !0 }),
+			Object.assign(c.default, c),
+			(b.exports = c.default))
+	},
+]
+
+//# sourceMappingURL=%5Broot-of-the-server%5D__050541e8._.js.map

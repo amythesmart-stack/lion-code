@@ -368,7 +368,6 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 				"vercel-ai-gateway": mockModels,
 				"zoo-gateway": mockModels,
 				litellm: mockModels,
-				roo: {},
 				ollama: {},
 				lmstudio: {},
 				poe: {},

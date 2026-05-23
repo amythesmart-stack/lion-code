@@ -41,7 +41,6 @@ export const dynamicProviders = [
 	"zoo-gateway",
 	"litellm",
 	"requesty",
-	"roo",
 	"unbound",
 	"poe",
 	"deepseek",
@@ -127,7 +126,6 @@ export const providerNames = [
 	"openai-codex",
 	"openai-native",
 	"qwen-code",
-	"roo",
 	"sambanova",
 	"vertex",
 	"xai",
@@ -154,6 +152,7 @@ export const retiredProviderNames = [
 	"groq",
 	"huggingface",
 	"io-intelligence",
+	"roo",
 ] as const
 
 export const retiredProviderNamesSchema = z.enum(retiredProviderNames)
@@ -396,11 +395,6 @@ const qwenCodeSchema = apiModelIdProviderModelSchema.extend({
 	qwenCodeOauthPath: z.string().optional(),
 })
 
-const rooSchema = apiModelIdProviderModelSchema.extend({
-	// Can use cloud authentication or provide an API key (cli).
-	rooApiKey: z.string().optional(),
-})
-
 const vercelAiGatewaySchema = baseProviderSettingsSchema.extend({
 	vercelAiGatewayApiKey: z.string().optional(),
 	vercelAiGatewayModelId: z.string().optional(),
@@ -449,7 +443,6 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	zaiSchema.merge(z.object({ apiProvider: z.literal("zai") })),
 	fireworksSchema.merge(z.object({ apiProvider: z.literal("fireworks") })),
 	qwenCodeSchema.merge(z.object({ apiProvider: z.literal("qwen-code") })),
-	rooSchema.merge(z.object({ apiProvider: z.literal("roo") })),
 	vercelAiGatewaySchema.merge(z.object({ apiProvider: z.literal("vercel-ai-gateway") })),
 	zooGatewaySchema.merge(z.object({ apiProvider: z.literal("zoo-gateway") })),
 	defaultSchema,
@@ -485,7 +478,6 @@ export const providerSettingsSchema = z.object({
 	...zaiSchema.shape,
 	...fireworksSchema.shape,
 	...qwenCodeSchema.shape,
-	...rooSchema.shape,
 	...vercelAiGatewaySchema.shape,
 	...zooGatewaySchema.shape,
 	...codebaseIndexProviderSchema.shape,
@@ -563,7 +555,6 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	sambanova: "apiModelId",
 	zai: "apiModelId",
 	fireworks: "apiModelId",
-	roo: "apiModelId",
 	"vercel-ai-gateway": "vercelAiGatewayModelId",
 	"zoo-gateway": "zooGatewayModelId",
 }
@@ -661,7 +652,6 @@ export const MODELS_BY_PROVIDER: Record<
 		models: Object.keys(openAiNativeModels),
 	},
 	"qwen-code": { id: "qwen-code", label: "Qwen Code", models: Object.keys(qwenCodeModels) },
-	roo: { id: "roo", label: "Roo Code Router", models: [] },
 	sambanova: {
 		id: "sambanova",
 		label: "SambaNova",

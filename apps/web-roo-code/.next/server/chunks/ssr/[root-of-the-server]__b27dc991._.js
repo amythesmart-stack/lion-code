@@ -1,0 +1,58 @@
+module.exports = [
+	93695,
+	(a, b, c) => {
+		b.exports = a.x("next/dist/shared/lib/no-fallback-error.external.js", () =>
+			require("next/dist/shared/lib/no-fallback-error.external.js"),
+		)
+	},
+	4776,
+	(a) => {
+		a.n(a.i(80606))
+	},
+	99376,
+	(a) => {
+		a.n(a.i(44673))
+	},
+	96860,
+	(a) => {
+		a.n(a.i(92386))
+	},
+	28656,
+	(a) => {
+		a.n(a.i(79868))
+	},
+	93563,
+	(a) => {
+		a.n(a.i(16472))
+	},
+	22734,
+	(a, b, c) => {
+		b.exports = a.x("fs", () => require("fs"))
+	},
+	50227,
+	(a, b, c) => {
+		b.exports = a.x("node:path", () => require("node:path"))
+	},
+	59639,
+	(a, b, c) => {
+		b.exports = a.x("node:process", () => require("node:process"))
+	},
+	57764,
+	(a, b, c) => {
+		b.exports = a.x("node:url", () => require("node:url"))
+	},
+	62711,
+	51212,
+	16552,
+	(a) => {
+		"use strict"
+		var b = a.i(50227)
+		a.s(["minpath", () => b.default], 62711)
+		var c = a.i(59639)
+		a.s(["minproc", () => c.default], 51212)
+		var d = a.i(57764)
+		a.s(["urlToPath", () => d.fileURLToPath], 16552)
+	},
+]
+
+//# sourceMappingURL=%5Broot-of-the-server%5D__b27dc991._.js.map

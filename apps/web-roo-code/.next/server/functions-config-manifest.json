@@ -1,0 +1,9 @@
+{
+	"version": 1,
+	"functions": {
+		"/api/og": {},
+		"/blog": {},
+		"/blog/[slug]": {},
+		"/blog/page/[page]": {}
+	}
+}
