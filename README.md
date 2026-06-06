@@ -81,16 +81,14 @@ for this exact support, so if you are having problems or if you have question, j
 - [Italiano](locales/it/README.md)
 - [日本語](locales/ja/README.md)
 - [한국어](locales/ko/README.md)
-- [Nederlands](locales/nl/README.md)
-- [Polski](locales/pl/README.md)
-- [Português (BR)](locales/pt-BR/README.md)
-- [Русский](locales/ru/README.md)
-- [Türkçe](locales/tr/README.md)
-- [Tiếng Việt](locales/vi/README.md)
+- Security updates: mermaid v11.15.0, axios v1.16.0
+
+<details>
+@@ -89,7 +90,7 @@ for this exact support, so if you are having problems or if you have question, j
 - [简体中文](locales/zh-CN/README.md)
 - [繁體中文](locales/zh-TW/README.md)
 - ...
-      </details>
+</details>
 
 ---
 
