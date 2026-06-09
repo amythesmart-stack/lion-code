@@ -1,5 +1,6 @@
 import js from "@eslint/js"
 import eslintConfigPrettier from "eslint-config-prettier"
+import sonarjs from "eslint-plugin-sonarjs"
 import turboPlugin from "eslint-plugin-turbo"
 import tseslint from "typescript-eslint"
 
@@ -12,6 +13,7 @@ export const config = [
 	js.configs.recommended,
 	eslintConfigPrettier,
 	...tseslint.configs.recommended,
+	sonarjs.configs.recommended,
 	{
 		plugins: {
 			turbo: turboPlugin,
