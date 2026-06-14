@@ -157,7 +157,7 @@ export interface TaskOptions extends CreateTaskOptions {
 	initialTodos?: TodoItem[]
 	workspacePath?: string
 	/** Initial status for the task's history item (e.g., "active" for child tasks) */
-	initialStatus?: "active" | "delegated" | "completed"
+	initialStatus?: "active" | "delegated" | "completed" | "interrupted"
 }
 
 export class Task extends EventEmitter<TaskEvents> implements TaskLike {
@@ -413,7 +413,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private cloudSyncedMessageTimestamps: Set<number> = new Set()
 
 	// Initial status for the task's history item (set at creation time to avoid race conditions)
-	private readonly initialStatus?: "active" | "delegated" | "completed"
+	private readonly initialStatus?: "active" | "delegated" | "completed" | "interrupted"
 
 	// MessageManager for high-level message operations (lazy initialized)
 	private _messageManager?: MessageManager

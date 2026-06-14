@@ -23,8 +23,8 @@ export type TaskMetadataOptions = {
 	mode?: string
 	/** Provider profile name for the task (sticky profile feature) */
 	apiConfigName?: string
-	/** Initial status for the task (e.g., "active" for child tasks) */
-	initialStatus?: "active" | "delegated" | "completed"
+	/** Initial status for the task (e.g., "active" for child tasks, "interrupted" for cancelled subtasks) */
+	initialStatus?: "active" | "delegated" | "completed" | "interrupted"
 }
 
 export async function taskMetadata({

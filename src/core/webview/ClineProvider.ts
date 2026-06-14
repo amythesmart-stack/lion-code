@@ -508,10 +508,10 @@ export class ClineProvider
 			// garbage collected.
 			task = undefined
 
-			// Delegation-aware parent metadata repair:
-			// If the popped task was a delegated child, repair the parent's metadata
-			// so it transitions from "delegated" back to "active" and becomes resumable
-			// from the task history list.
+			// Delegation-aware child interrupt marking:
+			// If the popped task was a delegated child, mark it as "interrupted"
+			// while preserving the parent-child link so the child can still
+			// report back to the parent when resumed.
 			// Skip when called from delegateParentAndOpenChild() during nested delegation
 			// transitions (A→B→C), where the caller intentionally replaces the active
 			// child and will update the parent to point at the new child.
@@ -521,22 +521,24 @@ export class ClineProvider
 						const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
 
 						if (parentHistory?.status === "delegated" && parentHistory?.awaitingChildId === childTaskId) {
+							// Mark child as interrupted but preserve the parent-child link
+							// so the child can still report back when resumed.
+							const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
 							await this.updateTaskHistory({
-								...parentHistory,
-								status: "active",
-								awaitingChildId: undefined,
+								...childHistory,
+								status: "interrupted",
 							})
-							const repairMsg =
-								`[ClineProvider#removeClineFromStack] Repaired parent ${parentTaskId} metadata: delegated → active (child ${childTaskId} removed). ` +
+							const logMsg =
+								`[ClineProvider#removeClineFromStack] Marked child ${childTaskId} as interrupted (parent ${parentTaskId} stays delegated). ` +
 								`Caller stack: ${callerStack?.split("\n").slice(1, 5).join(" | ")}`
-							this.log(repairMsg)
-							console.warn(repairMsg)
+							this.log(logMsg)
+							console.warn(logMsg)
 						}
 					})
 				} catch (err) {
 					// Non-fatal: log but do not block the pop operation.
 					this.log(
-						`[ClineProvider#removeClineFromStack] Failed to repair parent metadata for ${parentTaskId} (non-fatal): ${
+						`[ClineProvider#removeClineFromStack] Failed to mark child as interrupted for ${parentTaskId} (non-fatal): ${
 							err instanceof Error ? err.message : String(err)
 						}`,
 					)
@@ -3167,24 +3169,30 @@ export class ClineProvider
 				await this.runDelegationTransition(task.parentTaskId, async () => {
 					const { historyItem: parentHistory } = await this.getTaskWithId(task.parentTaskId!)
 
-					if (parentHistory?.status === "delegated" && parentHistory?.awaitingChildId === task.taskId) {
-						await this.updateTaskHistory({
-							...parentHistory,
-							status: "active",
-							awaitingChildId: undefined,
-						})
+					if (
+						parentHistory?.status === "delegated" &&
+						parentHistory?.awaitingChildId === task.taskId &&
+						historyItem
+					) {
+						// Mark the child as interrupted but preserve the parent-child link.
+						// The parent stays "delegated" with awaitingChildId intact so that
+						// when the user resumes the child and it calls attempt_completion,
+						// it can still report back to the parent.
+						historyItem = {
+							...historyItem,
+							status: "interrupted",
+						}
+						await this.updateTaskHistory(historyItem)
 
 						this.log(
-							`[cancelTask] Detached delegated parent ${task.parentTaskId}: delegated → active (child ${task.taskId} cancelled)`,
+							`[cancelTask] Marked child ${task.taskId} as interrupted (parent ${task.parentTaskId} stays delegated)`,
 						)
-						parentTask = undefined
-						rootTask = undefined
 						// Clear any stale fail-closed entry from a prior failed cancel attempt.
 						this.cancelledDelegationChildIds.delete(task.taskId)
 					}
 				})
 			} catch (error) {
-				// Fail closed: if we cannot prove the parent was detached, make the
+				// Fail closed: if we cannot prove the child was marked interrupted, make the
 				// rehydrated child standalone so later completions cannot reopen a
 				// stale delegated parent, even after a provider reload.
 				parentTask = undefined
@@ -3206,7 +3214,7 @@ export class ClineProvider
 					throw historyError
 				}
 				this.log(
-					`[cancelTask] Failed to detach delegated parent for ${task.taskId}: ${
+					`[cancelTask] Failed to mark child as interrupted for ${task.taskId}: ${
 						error instanceof Error ? error.message : String(error)
 					}`,
 				)
@@ -3555,10 +3563,10 @@ export class ClineProvider
 			const { historyItem } = await this.getTaskWithId(parentTaskId)
 
 			// Guard: re-validate delegation state after the async approval gap.
-			// cancelTask() or removeClineFromStack() may have already detached the parent
-			// (setting status → "active", awaitingChildId → undefined) while the user was
-			// approving the subtask finish.  If the parent no longer awaits this child,
-			// routing output back would corrupt an unrelated task.
+			// The cancelledDelegationChildIds set (fail-closed fallback) or an explicit
+			// abandon action may have detached the parent while the user was approving
+			// the subtask finish. If the parent no longer awaits this child, routing
+			// output back would corrupt an unrelated task.
 			if (
 				this.cancelledDelegationChildIds.has(childTaskId) ||
 				(historyItem.status !== "delegated" && historyItem.status !== "active") ||

@@ -536,6 +536,57 @@ describe("attemptCompletionTool", () => {
 				expect(mockPushToolResult).toHaveBeenCalledWith("")
 			})
 
+			it("delegates an interrupted subtask completion back to the parent that still awaits it", async () => {
+				const block: AttemptCompletionToolUse = {
+					type: "tool_use",
+					name: "attempt_completion",
+					params: { result: "resumed result" },
+					nativeArgs: { result: "resumed result" },
+					partial: false,
+				}
+				const mockProvider = {
+					log: vi.fn(),
+					getTaskWithId: vi.fn().mockImplementation((id: string) => {
+						if (id === "child-1") {
+							return Promise.resolve({ historyItem: { id, status: "interrupted" } })
+						}
+						if (id === "parent-1") {
+							return Promise.resolve({
+								historyItem: { id, status: "delegated", awaitingChildId: "child-1" },
+							})
+						}
+						throw new Error(`unexpected task id ${id}`)
+					}),
+					reopenParentFromDelegation: vi.fn().mockResolvedValue(true),
+				}
+
+				Object.assign(mockTask, {
+					taskId: "child-1",
+					parentTaskId: "parent-1",
+					providerRef: { deref: () => mockProvider },
+				})
+				mockAskFinishSubTaskApproval.mockResolvedValue(true)
+
+				const callbacks: AttemptCompletionCallbacks = {
+					askApproval: mockAskApproval,
+					handleError: mockHandleError,
+					pushToolResult: mockPushToolResult,
+					askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
+					toolDescription: mockToolDescription,
+				}
+
+				await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
+
+				expect(mockAskFinishSubTaskApproval).toHaveBeenCalled()
+				expect(mockProvider.reopenParentFromDelegation).toHaveBeenCalledWith({
+					parentTaskId: "parent-1",
+					childTaskId: "child-1",
+					completionResultSummary: "resumed result",
+				})
+				expect(mockTask.ask).not.toHaveBeenCalled()
+				expect(mockPushToolResult).toHaveBeenCalledWith("")
+			})
+
 			it("falls through to standalone completion when parent delegation becomes stale after approval", async () => {
 				const block: AttemptCompletionToolUse = {
 					type: "tool_use",

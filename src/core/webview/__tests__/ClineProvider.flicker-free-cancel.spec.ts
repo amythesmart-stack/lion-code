@@ -321,7 +321,7 @@ describe("ClineProvider flicker-free cancel", () => {
 		expect((provider as any).clineStack[1]).toBe(mockTask2)
 	})
 
-	it("detaches runtime parent links for a cancelled delegated child while preserving history lineage", async () => {
+	it("marks cancelled delegated child as interrupted while preserving parent-child link", async () => {
 		const mockRootTask = { taskId: "root-1" }
 		const mockParentTask = { taskId: "parent-1" }
 		const childHistory: HistoryItem = {
@@ -381,25 +381,27 @@ describe("ClineProvider flicker-free cancel", () => {
 
 		await provider.cancelTask()
 
+		// Child should be marked as interrupted (not detached from parent)
 		expect(updateTaskHistorySpy).toHaveBeenCalledWith(
 			expect.objectContaining({
-				id: "parent-1",
-				status: "active",
-				awaitingChildId: undefined,
+				id: "child-1",
+				status: "interrupted",
+				parentTaskId: "parent-1",
+				rootTaskId: "root-1",
 			}),
 		)
+		// Parent links should be preserved for rehydration
 		expect(createTaskWithHistoryItemSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				id: "child-1",
+				status: "interrupted",
 				parentTaskId: "parent-1",
 				rootTaskId: "root-1",
-				parentTask: undefined,
-				rootTask: undefined,
 			}),
 		)
 	})
 
-	it("detaches runtime parent links when delegated parent detach fails", async () => {
+	it("detaches runtime parent links when marking child as interrupted fails", async () => {
 		const mockRootTask = { taskId: "root-1" }
 		const mockParentTask = { taskId: "parent-1" }
 		const childHistory: HistoryItem = {
@@ -447,7 +449,9 @@ describe("ClineProvider flicker-free cancel", () => {
 		await provider.cancelTask()
 
 		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			expect.stringContaining("[cancelTask] Failed to detach delegated parent for child-1: parent lookup failed"),
+			expect.stringContaining(
+				"[cancelTask] Failed to mark child as interrupted for child-1: parent lookup failed",
+			),
 		)
 		expect(updateTaskHistorySpy).toHaveBeenCalledWith(
 			expect.objectContaining({
