@@ -184,12 +184,41 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		// The abort should still have been called
 		expect(childTask.abortTask).toHaveBeenCalledWith(true)
 
-		// Error should be logged as non-fatal
+		// Error should be logged as fail-closed
 		expect(provider.log).toHaveBeenCalledWith(
-			expect.stringContaining("Failed to mark child as interrupted for parent-1 (non-fatal)"),
+			expect.stringContaining("Failed to mark child child-1 as interrupted for parent parent-1 (fail-closed"),
 		)
 
+		// Child should be added to cancelledDelegationChildIds (fail-closed guard)
+		expect((provider as any).cancelledDelegationChildIds.has("child-1")).toBe(true)
+
 		// No update should have been attempted
+		expect(updateTaskHistory).not.toHaveBeenCalled()
+	})
+
+	it("skips redundant write when child is already interrupted (idempotent)", async () => {
+		const { provider, childTask, updateTaskHistory } = buildMockProvider({
+			childTaskId: "child-1",
+			parentTaskId: "parent-1",
+			parentHistoryItem: {
+				id: "parent-1",
+				status: "delegated",
+				awaitingChildId: "child-1",
+			},
+			childHistoryItem: {
+				id: "child-1",
+				status: "interrupted",
+				parentTaskId: "parent-1",
+			},
+		})
+
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+
+		// Stack should be popped
+		expect(provider.clineStack).toHaveLength(0)
+		expect(childTask.abortTask).toHaveBeenCalledWith(true)
+
+		// updateTaskHistory should NOT have been called — child already interrupted
 		expect(updateTaskHistory).not.toHaveBeenCalled()
 	})
 

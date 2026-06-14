@@ -1,7 +1,7 @@
 // npx vitest run __tests__/history-resume-delegation.spec.ts
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { RooCodeEventName } from "@roo-code/types"
+import { COMPLETION_SUMMARY_MAX_LENGTH, RooCodeEventName } from "@roo-code/types"
 
 /* vscode mock for Task/Provider imports */
 vi.mock("vscode", () => {
@@ -935,6 +935,49 @@ describe("History resume delegation - parent metadata transitions", () => {
 		expect(saveApiMessagesMock).not.toHaveBeenCalled()
 		expect(updateTaskHistory).not.toHaveBeenCalled()
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[reopenParentFromDelegation] Aborting"))
+	})
+
+	it("reopenParentFromDelegation truncates completionResultSummary to COMPLETION_SUMMARY_MAX_LENGTH", async () => {
+		const updateTaskHistory = vi.fn().mockResolvedValue([])
+		const parentInstance = {
+			resumeAfterDelegation: vi.fn().mockResolvedValue(undefined),
+			overwriteClineMessages: vi.fn().mockResolvedValue(undefined),
+			overwriteApiConversationHistory: vi.fn().mockResolvedValue(undefined),
+		}
+		const provider = makeProviderStub({
+			contextProxy: { globalStorageUri: { fsPath: "/tmp" } },
+			getTaskWithId: vi.fn().mockResolvedValue({
+				historyItem: {
+					id: "parent-trunc",
+					status: "delegated",
+					awaitingChildId: "child-trunc",
+				},
+			}),
+			emit: vi.fn(),
+			log: vi.fn(),
+			getCurrentTask: vi.fn(() => ({ taskId: "child-trunc" })),
+			removeClineFromStack: vi.fn(),
+			createTaskWithHistoryItem: vi.fn().mockResolvedValue(parentInstance),
+			updateTaskHistory,
+			cancelledDelegationChildIds: new Set(),
+		} as any)
+
+		vi.mocked(readTaskMessages).mockResolvedValue([])
+		vi.mocked(readApiMessages).mockResolvedValue([])
+
+		const oversizedSummary = "x".repeat(40000)
+		await (ClineProvider.prototype as any).reopenParentFromDelegation.call(provider, {
+			parentTaskId: "parent-trunc",
+			childTaskId: "child-trunc",
+			completionResultSummary: oversizedSummary,
+		})
+
+		// The completionResultSummary written to history should be capped
+		const parentUpdate = updateTaskHistory.mock.calls.find(
+			(call: any[]) => call[0]?.id === "parent-trunc" && call[0]?.completionResultSummary !== undefined,
+		)
+		expect(parentUpdate).toBeDefined()
+		expect(parentUpdate![0].completionResultSummary.length).toBe(COMPLETION_SUMMARY_MAX_LENGTH)
 	})
 
 	it("serializes delegation transitions and continues after a rejected predecessor", async () => {

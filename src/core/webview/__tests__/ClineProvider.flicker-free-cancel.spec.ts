@@ -321,6 +321,183 @@ describe("ClineProvider flicker-free cancel", () => {
 		expect((provider as any).clineStack[1]).toBe(mockTask2)
 	})
 
+	it("self-heals orphaned delegated parent when awaited child no longer exists", async () => {
+		// Setup: delegated parent whose awaitingChildId points to a deleted child
+		const orphanedHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "deleted-child",
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "deleted-child") {
+				return Promise.reject(new Error("Task not found"))
+			}
+			return Promise.resolve({ historyItem: orphanedHistory })
+		}) as any
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
+
+		await provider.createTaskWithHistoryItem(orphanedHistory)
+
+		// Should have persisted the self-healed state
+		expect(updateTaskHistorySpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "parent-1",
+				status: "active",
+				awaitingChildId: undefined,
+			}),
+		)
+	})
+
+	it("self-heals delegated parent when awaited child exists but parentTaskId was severed", async () => {
+		// Scenario: fail-closed cancel stripped parentTaskId from child; parent is stuck "delegated"
+		const orphanedHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "child-1",
+		}
+		const severedChildHistory: HistoryItem = {
+			id: "child-1",
+			number: 2,
+			task: "child task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "interrupted",
+			parentTaskId: undefined, // severed by fail-closed cancel
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "child-1") {
+				return Promise.resolve({ historyItem: severedChildHistory })
+			}
+			if (id === "parent-1") {
+				return Promise.resolve({ historyItem: orphanedHistory })
+			}
+			throw new Error(`unexpected task lookup: ${id}`)
+		}) as any
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
+
+		await provider.createTaskWithHistoryItem(orphanedHistory)
+
+		// Should self-heal because child's parentTaskId doesn't match parent's id
+		expect(updateTaskHistorySpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "parent-1",
+				status: "active",
+				awaitingChildId: undefined,
+			}),
+		)
+	})
+
+	it("does not self-heal delegated parent on transient I/O error from getTaskWithId", async () => {
+		const delegatedHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "child-1",
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "child-1") {
+				return Promise.reject(new Error("EMFILE: too many open files"))
+			}
+			if (id === "parent-1") {
+				return Promise.resolve({ historyItem: delegatedHistory })
+			}
+			throw new Error(`unexpected task lookup: ${id}`)
+		}) as any
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
+
+		await provider.createTaskWithHistoryItem(delegatedHistory)
+
+		// Should NOT self-heal — the error is transient, not "Task not found"
+		expect(updateTaskHistorySpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: "active",
+				awaitingChildId: undefined,
+			}),
+		)
+	})
+
+	it("does not self-heal delegated parent when awaited child still exists", async () => {
+		const delegatedHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "child-1",
+		}
+		const childHistory: HistoryItem = {
+			id: "child-1",
+			number: 2,
+			task: "child task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "interrupted",
+			parentTaskId: "parent-1",
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "child-1") {
+				return Promise.resolve({ historyItem: childHistory })
+			}
+			if (id === "parent-1") {
+				return Promise.resolve({ historyItem: delegatedHistory })
+			}
+			throw new Error(`unexpected task lookup: ${id}`)
+		}) as any
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		vi.spyOn(provider, "removeClineFromStack").mockResolvedValue(undefined)
+
+		await provider.createTaskWithHistoryItem(delegatedHistory)
+
+		// Should NOT have called updateTaskHistory for self-healing (child exists with matching parentTaskId)
+		expect(updateTaskHistorySpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: "active",
+				awaitingChildId: undefined,
+			}),
+		)
+	})
+
 	it("marks cancelled delegated child as interrupted while preserving parent-child link", async () => {
 		const mockRootTask = { taskId: "root-1" }
 		const mockParentTask = { taskId: "parent-1" }
@@ -516,5 +693,113 @@ describe("ClineProvider flicker-free cancel", () => {
 		await expect(provider.cancelTask()).rejects.toThrow("standalone persist failed")
 		expect(createTaskWithHistoryItemSpy).not.toHaveBeenCalled()
 		expect((provider as any).cancelledDelegationChildIds.has("child-1")).toBe(true)
+	})
+
+	it("repairs orphaned parent when deleting an awaited delegation child", async () => {
+		const childHistory: HistoryItem = {
+			id: "child-1",
+			number: 2,
+			task: "child task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			parentTaskId: "parent-1",
+			rootTaskId: "root-1",
+		}
+		const parentHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "child-1",
+			childIds: ["child-1", "child-other"],
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "child-1") {
+				return Promise.resolve({ historyItem: childHistory, taskDirPath: "/test/storage/child-1" })
+			}
+			if (id === "parent-1") {
+				return Promise.resolve({ historyItem: parentHistory })
+			}
+			throw new Error(`unexpected task lookup: ${id}`)
+		}) as any
+
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		;(provider as any).taskHistoryStore = {
+			deleteMany: vi.fn().mockResolvedValue(undefined),
+		}
+
+		await provider.deleteTaskWithId("child-1")
+
+		// Parent should be repaired: reset to active with awaitingChildId cleared and childIds cleaned
+		expect(updateTaskHistorySpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "parent-1",
+				status: "active",
+				awaitingChildId: undefined,
+				childIds: ["child-other"],
+			}),
+		)
+	})
+
+	it("does not repair parent when deleted child is not the awaited one", async () => {
+		const childHistory: HistoryItem = {
+			id: "child-2",
+			number: 3,
+			task: "other child",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			parentTaskId: "parent-1",
+		}
+		const parentHistory: HistoryItem = {
+			id: "parent-1",
+			number: 1,
+			task: "parent task",
+			ts: Date.now(),
+			tokensIn: 10,
+			tokensOut: 20,
+			totalCost: 0.001,
+			workspace: "/test/workspace",
+			status: "delegated",
+			awaitingChildId: "child-1", // awaiting a different child
+		}
+
+		;(provider as any).clineStack = []
+		provider.getTaskWithId = vi.fn().mockImplementation((id) => {
+			if (id === "child-2") {
+				return Promise.resolve({ historyItem: childHistory, taskDirPath: "/test/storage/child-2" })
+			}
+			if (id === "parent-1") {
+				return Promise.resolve({ historyItem: parentHistory })
+			}
+			throw new Error(`unexpected task lookup: ${id}`)
+		}) as any
+
+		const updateTaskHistorySpy = vi.spyOn(provider, "updateTaskHistory").mockResolvedValue([])
+		;(provider as any).taskHistoryStore = {
+			deleteMany: vi.fn().mockResolvedValue(undefined),
+		}
+
+		await provider.deleteTaskWithId("child-2")
+
+		// Parent should NOT be repaired — it awaits a different child
+		expect(updateTaskHistorySpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "parent-1",
+				status: "active",
+			}),
+		)
 	})
 })

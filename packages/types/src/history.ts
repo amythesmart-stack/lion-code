@@ -7,6 +7,8 @@ import { z } from "zod"
 export const TASK_STATUSES = ["active", "completed", "delegated", "interrupted"] as const
 export type TaskHistoryStatus = (typeof TASK_STATUSES)[number]
 
+export const COMPLETION_SUMMARY_MAX_LENGTH = 32768
+
 export const historyItemSchema = z.object({
 	id: z.string(),
 	rootTaskId: z.string().optional(),
@@ -28,7 +30,7 @@ export const historyItemSchema = z.object({
 	childIds: z.array(z.string()).optional(), // All children spawned by this task
 	awaitingChildId: z.string().optional(), // Child currently awaited (set when delegated)
 	completedByChildId: z.string().optional(), // Child that completed and resumed this parent
-	completionResultSummary: z.string().optional(), // Summary from completed child
+	completionResultSummary: z.string().max(COMPLETION_SUMMARY_MAX_LENGTH).optional(), // Summary from completed child
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>

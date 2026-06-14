@@ -96,6 +96,7 @@ import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
+import { COMPLETION_SUMMARY_MAX_LENGTH } from "@roo-code/types"
 import type { ClineMessage, TodoItem } from "@roo-code/types"
 import { readApiMessages, saveApiMessages, saveTaskMessages, TaskHistoryStore } from "../task-persistence"
 import { readTaskMessages } from "../task-persistence/taskMessages"
@@ -469,8 +470,6 @@ export class ClineProvider
 	// Removes and destroys the top Cline instance (the current finished task),
 	// activating the previous one (resuming the parent task).
 	async removeClineFromStack(options?: { skipChildInterruptMarking?: boolean }) {
-		const callerStack = new Error().stack
-
 		if (this.clineStack.length === 0) {
 			return
 		}
@@ -516,6 +515,7 @@ export class ClineProvider
 			// transitions (A→B→C), where the caller intentionally replaces the active
 			// child and will update the parent to point at the new child.
 			if (parentTaskId && childTaskId && !options?.skipChildInterruptMarking) {
+				const callerStack = new Error().stack
 				try {
 					await this.runDelegationTransition(parentTaskId, async () => {
 						const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
@@ -524,6 +524,10 @@ export class ClineProvider
 							// Mark child as interrupted but preserve the parent-child link
 							// so the child can still report back when resumed.
 							const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+							if (childHistory?.status === "interrupted") {
+								// Already marked — skip redundant write.
+								return
+							}
 							await this.updateTaskHistory({
 								...childHistory,
 								status: "interrupted",
@@ -536,9 +540,26 @@ export class ClineProvider
 						}
 					})
 				} catch (err) {
-					// Non-fatal: log but do not block the pop operation.
+					// Fail closed: if we cannot confirm the child was marked interrupted,
+					// add it to cancelledDelegationChildIds so that a stale
+					// attempt_completion cannot reopen the parent after a provider reload.
+					// Also persist the parentTaskId stripping so the guard survives reload
+					// (mirrors cancelTask's fail-closed path).
+					this.cancelledDelegationChildIds.add(childTaskId)
+					try {
+						const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+						if (childHistory) {
+							await this.updateTaskHistory({
+								...childHistory,
+								parentTaskId: undefined,
+								rootTaskId: undefined,
+							})
+						}
+					} catch {
+						// Best-effort — the in-memory guard is the primary safeguard.
+					}
 					this.log(
-						`[ClineProvider#removeClineFromStack] Failed to mark child as interrupted for ${parentTaskId} (non-fatal): ${
+						`[ClineProvider#removeClineFromStack] Failed to mark child ${childTaskId} as interrupted for parent ${parentTaskId} (fail-closed, added to cancelledDelegationChildIds): ${
 							err instanceof Error ? err.message : String(err)
 						}`,
 					)
@@ -973,12 +994,68 @@ export class ClineProvider
 		// runtime settings with stale/incomplete persisted profiles.
 		const skipProfileRestoreFromHistory = isCliRuntime
 
+		// Self-heal orphaned "delegated" parents on rehydration: if the awaited
+		// child no longer exists, reset the parent to "active" so it is resumable.
+		// Also heal when the child exists but has had its parentTaskId stripped
+		// (fail-closed cancel path), since the child can no longer delegate back.
+		// Serialized through runDelegationTransition to avoid racing cancelTask/reopenParentFromDelegation.
+		if (historyItem.status === "delegated" && historyItem.awaitingChildId) {
+			const awaitedChildId = historyItem.awaitingChildId
+			const parentId = historyItem.id
+			try {
+				historyItem = await this.runDelegationTransition(parentId, async () => {
+					let shouldSelfHeal = false
+					let healReason = ""
+					try {
+						const { historyItem: childHistory } = await this.getTaskWithId(awaitedChildId)
+						// Child exists but was severed (fail-closed cancel stripped parentTaskId).
+						// The child can no longer delegate back, so unstick the parent.
+						if (childHistory && childHistory.parentTaskId !== parentId) {
+							shouldSelfHeal = true
+							healReason = `child exists but parentTaskId is ${childHistory.parentTaskId ?? "undefined"}, expected ${parentId}`
+						}
+					} catch (err) {
+						// Only self-heal for "Task not found". Transient I/O errors should
+						// not sever a valid parent-child link.
+						if (err instanceof Error && err.message === "Task not found") {
+							shouldSelfHeal = true
+							healReason = "child not found in history"
+						} else {
+							this.log(
+								`[createTaskWithHistoryItem] Transient error checking child ${awaitedChildId} for parent ${parentId} (skipping self-heal): ${err instanceof Error ? err.message : String(err)}`,
+							)
+						}
+					}
+					if (shouldSelfHeal) {
+						this.log(
+							`[createTaskWithHistoryItem] Self-healing orphaned parent ${parentId}: ${healReason}. Resetting to active.`,
+						)
+						const healed = { ...historyItem, status: "active" as const, awaitingChildId: undefined }
+						await this.updateTaskHistory(healed).catch((healErr) =>
+							this.log(
+								`[createTaskWithHistoryItem] Failed to persist self-healed state for ${parentId}: ${healErr instanceof Error ? healErr.message : String(healErr)}`,
+							),
+						)
+						return healed
+					}
+					return historyItem
+				})
+			} catch (lockErr) {
+				this.log(
+					`[createTaskWithHistoryItem] Self-heal lock error for parent ${parentId} (proceeding without heal): ${lockErr instanceof Error ? lockErr.message : String(lockErr)}`,
+				)
+			}
+		}
+
 		// Check if we're rehydrating the current task to avoid flicker
 		const currentTask = this.getCurrentTask()
 		const isRehydratingCurrentTask = currentTask && currentTask.taskId === historyItem.id
 
 		if (!isRehydratingCurrentTask) {
-			await this.removeClineFromStack()
+			// skipChildInterruptMarking: the caller is resuming/opening a task from
+			// history, not cancelling a delegation — any child on the stack should
+			// not be collaterally marked as interrupted.
+			await this.removeClineFromStack({ skipChildInterruptMarking: true })
 		}
 
 		// If the history item has a saved mode, restore it and its associated API configuration.
@@ -1984,6 +2061,32 @@ export class ClineProvider
 				}
 
 				await collectChildIds(id)
+			}
+
+			// Repair orphaned parent if the deleted task was an awaited delegation child.
+			// Serialized through runDelegationTransition to avoid racing cancelTask/reopenParentFromDelegation.
+			if (historyItem.parentTaskId) {
+				try {
+					await this.runDelegationTransition(historyItem.parentTaskId, async () => {
+						const { historyItem: parentHistory } = await this.getTaskWithId(historyItem.parentTaskId!)
+						if (parentHistory && parentHistory.awaitingChildId === id) {
+							await this.updateTaskHistory({
+								...parentHistory,
+								status: "active",
+								awaitingChildId: undefined,
+								childIds: parentHistory.childIds?.filter((cid) => cid !== id),
+							})
+							this.log(
+								`[deleteTaskWithId] Repaired parent ${historyItem.parentTaskId}: cleared stale awaitingChildId=${id}, reset to active.`,
+							)
+						}
+					})
+				} catch (err) {
+					// Parent may already be deleted or not found — nothing to repair.
+					this.log(
+						`[deleteTaskWithId] Could not repair parent ${historyItem.parentTaskId} for deleted child ${id}: ${err instanceof Error ? err.message : String(err)}`,
+					)
+				}
 			}
 
 			// Remove from stack if any of the tasks to delete are in the current task stack
@@ -3170,6 +3273,10 @@ export class ClineProvider
 					const { historyItem: parentHistory } = await this.getTaskWithId(task.parentTaskId!)
 
 					if (parentHistory?.status === "delegated" && parentHistory?.awaitingChildId === task.taskId) {
+						// Already marked — skip redundant write (idempotency guard).
+						if (historyItem!.status === "interrupted") {
+							return
+						}
 						// Mark the child as interrupted but preserve the parent-child link.
 						// The parent stays "delegated" with awaitingChildId intact so that
 						// when the user resumes the child and it calls attempt_completion,
@@ -3552,7 +3659,11 @@ export class ClineProvider
 		childTaskId: string
 		completionResultSummary: string
 	}): Promise<boolean> {
-		const { parentTaskId, childTaskId, completionResultSummary } = params
+		const { parentTaskId, childTaskId, completionResultSummary: rawSummary } = params
+		const completionResultSummary =
+			rawSummary.length > COMPLETION_SUMMARY_MAX_LENGTH
+				? rawSummary.slice(0, COMPLETION_SUMMARY_MAX_LENGTH)
+				: rawSummary
 		return this.runDelegationTransition(parentTaskId, async () => {
 			const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
 

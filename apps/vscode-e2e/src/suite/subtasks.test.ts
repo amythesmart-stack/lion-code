@@ -302,6 +302,92 @@ suite("Roo Code Subtasks", function () {
 		}
 	})
 
+	// Fix for orphaned "delegated" parents: when the user resumes a parent
+	// whose awaited child was interrupted and cleared, the parent self-heals
+	// from "delegated" to "active" and can be resumed independently.
+	test("parent self-heals when resumed after interrupted child is cleared", async () => {
+		const api = globalThis.api
+		const asks: Record<string, ClineMessage[]> = {}
+		const says: Record<string, ClineMessage[]> = {}
+
+		const messageHandler = ({ taskId, message }: { taskId: string; message: ClineMessage }) => {
+			if (message.type === "ask") {
+				asks[taskId] = asks[taskId] || []
+				asks[taskId].push(message)
+			}
+			if (message.type === "say" && message.partial === false) {
+				says[taskId] = says[taskId] || []
+				says[taskId].push(message)
+			}
+		}
+
+		api.on(RooCodeEventName.Message, messageHandler)
+
+		try {
+			// 1) Start parent, wait for child to spawn
+			const parentTaskId = await api.startNewTask({
+				configuration: {
+					mode: "ask",
+					alwaysAllowModeSwitch: true,
+					alwaysAllowSubtasks: true,
+					autoApprovalEnabled: true,
+					enableCheckpoints: false,
+				},
+				text: SUBTASK_PARENT_PROMPT,
+			})
+
+			let spawnedTaskId: string | undefined
+			await waitFor(() => {
+				const stack = api.getCurrentTaskStack()
+				const current = stack[stack.length - 1]
+				if (current && current !== parentTaskId) {
+					spawnedTaskId = current
+					return true
+				}
+				return false
+			})
+
+			// 2) Wait for child to reach followup, then cancel it
+			await waitFor(
+				() => asks[spawnedTaskId!]?.some(({ type, ask }) => type === "ask" && ask === "followup") ?? false,
+			)
+			await api.cancelCurrentTask()
+
+			// 3) Wait for the child to show resume_task ask, then clear it
+			// (simulating user navigating away without resuming the child)
+			await waitFor(() => api.getCurrentTaskStack().at(-1) === spawnedTaskId)
+			await waitFor(
+				() => asks[spawnedTaskId!]?.some(({ type, ask }) => type === "ask" && ask === "resume_task") ?? false,
+			)
+			await api.clearCurrentTask()
+			await waitFor(() => api.getCurrentTaskStack().length === 0)
+
+			// 4) Now resume the parent directly — the self-heal guard in
+			// createTaskWithHistoryItem detects the child still exists in history
+			// but the parent should still be resumable (it re-enters the task loop).
+			assert.ok(await api.isTaskInHistory(parentTaskId), "Parent should still exist in history")
+
+			await api.resumeTask(parentTaskId)
+
+			// 5) Wait for the parent to become the active task on the stack
+			await waitFor(() => api.getCurrentTaskStack().includes(parentTaskId))
+
+			// 6) The parent should produce new output (any say message after resume)
+			// proving it is actively running and not stuck in "delegated" state.
+			await waitFor(() => (says[parentTaskId]?.length ?? 0) > 0 || (asks[parentTaskId]?.length ?? 0) > 0)
+
+			assert.ok(
+				api.getCurrentTaskStack().includes(parentTaskId),
+				"Parent should be active on the stack after self-healing",
+			)
+		} finally {
+			api.off(RooCodeEventName.Message, messageHandler)
+			while (api.getCurrentTaskStack().length > 0) {
+				await api.clearCurrentTask()
+			}
+		}
+	})
+
 	test("same-profile child returns before a different-profile child", async () => {
 		const api = globalThis.api
 		const says: Record<string, ClineMessage[]> = {}
