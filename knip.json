@@ -68,7 +68,7 @@
 			"project": ["src/**/*.ts"],
 			"ignoreDependencies": ["@types/vscode"]
 		},
-		"packages/{build,ipc,types}": {
+		"packages/{build,ipc,types,remote-bridge}": {
 			"project": ["src/**/*.ts"]
 		}
 	},
