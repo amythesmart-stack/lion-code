@@ -664,6 +664,8 @@ export const webviewMessageHandler = async (
 
 		case "updateSettings":
 			if (message.updatedSettings) {
+				let touchedRemoteControl = false
+
 				for (const [key, value] of Object.entries(message.updatedSettings)) {
 					let newValue = value
 
@@ -763,7 +765,17 @@ export const webviewMessageHandler = async (
 						}
 					}
 
+					if (key === "remoteControlEnabled" || key === "remoteControlSocketPath") {
+						touchedRemoteControl = true
+					}
+
 					await provider.contextProxy.setValue(key as keyof RooCodeSettings, newValue)
+				}
+
+				// Hot-toggle the IPC server + forked bridge when the Remote Control
+				// settings change via the webview (issue #650).
+				if (touchedRemoteControl) {
+					provider.notifyRemoteControlChange()
 				}
 
 				await provider.postStateToWebview()

@@ -237,6 +237,19 @@ export const globalSettingsSchema = z.object({
 	showWorktreesInHomeScreen: z.boolean().optional(),
 
 	/**
+	 * Remote Control (issue #650): when true, the extension starts its IPC
+	 * server and forks the remote bridge process so the task stream and
+	 * approval flow can be reached from another device. Opt-in.
+	 */
+	remoteControlEnabled: z.boolean().optional(),
+	/**
+	 * Remote Control: Unix socket path the IPC server listens on and the
+	 * bridge connects to. Leave blank to use a per-user default under the
+	 * system temp directory (`ROO_CODE_IPC_SOCKET_PATH` overrides if set).
+	 */
+	remoteControlSocketPath: z.string().optional(),
+
+	/**
 	 * List of native tool names to globally disable.
 	 * Tools in this list will be excluded from prompt generation and rejected at execution time.
 	 */

@@ -127,8 +127,11 @@ export class RemoteBridgeHost {
 		let child: childProcess.ChildProcess
 
 		try {
+			// `child_process.fork` requires an IPC channel in `stdio`; the
+			// bridge itself communicates over the Unix socket, so we add `'ipc'`
+			// as a fourth stdio entry solely to satisfy fork's requirement.
 			child = this._fork(this._bridgeModulePath, ["--socket", socketPath, "--serve"], {
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: ["ignore", "pipe", "pipe", "ipc"],
 			})
 		} catch (error) {
 			this._log(

@@ -29,6 +29,7 @@ import {
 	ArrowLeft,
 	GitCommitVertical,
 	GraduationCap,
+	Radio,
 } from "lucide-react"
 
 import {
@@ -72,6 +73,7 @@ import { ContextManagementSettings } from "./ContextManagementSettings"
 import { TerminalSettings } from "./TerminalSettings"
 import { ExperimentalSettings } from "./ExperimentalSettings"
 import { LanguageSettings } from "./LanguageSettings"
+import { RemoteControlSettings } from "./RemoteControlSettings"
 import { About } from "./About"
 import { Section } from "./Section"
 import PromptsSettings from "./PromptsSettings"
@@ -111,6 +113,7 @@ export const sectionNames = [
 	"ui",
 	"experimental",
 	"language",
+	"remoteControl",
 	"about",
 ] as const
 
@@ -208,6 +211,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		autoCloseZooOpenedFiles,
 		autoCloseZooOpenedFilesAfterUserEdited,
 		autoCloseZooOpenedNewFiles,
+		remoteControlEnabled,
+		remoteControlSocketPath,
 	} = cachedState
 
 	const apiConfiguration = useMemo(() => cachedState.apiConfiguration ?? {}, [cachedState.apiConfiguration])
@@ -432,6 +437,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					openRouterImageGenerationSelectedModel,
 					experiments,
 					customSupportPrompts,
+					remoteControlEnabled: remoteControlEnabled ?? false,
+					remoteControlSocketPath: remoteControlSocketPath ?? "",
 				},
 			})
 
@@ -533,6 +540,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			{ id: "ui", icon: Glasses },
 			{ id: "experimental", icon: FlaskConical },
 			{ id: "language", icon: Globe },
+			{ id: "remoteControl", icon: Radio },
 			{ id: "about", icon: Info },
 		],
 		[], // No dependencies needed now
@@ -933,6 +941,15 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						{/* Language Section */}
 						{renderTab === "language" && (
 							<LanguageSettings language={language || "en"} setCachedStateField={setCachedStateField} />
+						)}
+
+						{/* Remote Control Section */}
+						{renderTab === "remoteControl" && (
+							<RemoteControlSettings
+								remoteControlEnabled={remoteControlEnabled}
+								remoteControlSocketPath={remoteControlSocketPath}
+								setCachedStateField={setCachedStateField}
+							/>
 						)}
 
 						{/* About Section */}

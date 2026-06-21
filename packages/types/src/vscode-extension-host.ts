@@ -318,6 +318,8 @@ export type ExtensionState = Pick<
 	| "requestDelaySeconds"
 	| "showWorktreesInHomeScreen"
 	| "disabledTools"
+	| "remoteControlEnabled"
+	| "remoteControlSocketPath"
 > & {
 	lockApiConfigAcrossModes?: boolean
 	version: string

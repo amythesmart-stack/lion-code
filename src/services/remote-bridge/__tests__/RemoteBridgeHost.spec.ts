@@ -38,7 +38,7 @@ describe("RemoteBridgeHost", () => {
 		expect(fork).toHaveBeenCalledWith(
 			"/fake/dist/remote-bridge/main.js",
 			["--socket", "/tmp/zoo-code.sock", "--serve"],
-			expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			expect.objectContaining({ stdio: ["ignore", "pipe", "pipe", "ipc"] }),
 		)
 		expect(host.isRunning).toBe(true)
 		expect(host.socketPath).toBe("/tmp/zoo-code.sock")

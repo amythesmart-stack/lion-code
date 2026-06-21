@@ -82,6 +82,7 @@ const mockClineProvider = {
 	},
 	log: vi.fn(),
 	postStateToWebview: vi.fn(),
+	notifyRemoteControlChange: vi.fn(),
 	getCurrentTask: vi.fn(),
 	getTaskWithId: vi.fn(),
 	createTaskWithHistoryItem: vi.fn(),
@@ -1337,5 +1338,41 @@ describe("zooCodeSignOut", () => {
 			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
 			true,
 		)
+	})
+})
+
+describe("webviewMessageHandler - remoteControl", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it("persists remoteControlEnabled and notifies the extension host", async () => {
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { remoteControlEnabled: true },
+		})
+
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("remoteControlEnabled", true)
+		expect(mockClineProvider.notifyRemoteControlChange).toHaveBeenCalledTimes(1)
+		expect(mockClineProvider.postStateToWebview).toHaveBeenCalledTimes(1)
+	})
+
+	it("persists remoteControlSocketPath and notifies the extension host", async () => {
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { remoteControlSocketPath: "/tmp/zoo.sock" },
+		})
+
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("remoteControlSocketPath", "/tmp/zoo.sock")
+		expect(mockClineProvider.notifyRemoteControlChange).toHaveBeenCalledTimes(1)
+	})
+
+	it("does not notify when unrelated settings change", async () => {
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { soundEnabled: true },
+		})
+
+		expect(mockClineProvider.notifyRemoteControlChange).not.toHaveBeenCalled()
 	})
 })

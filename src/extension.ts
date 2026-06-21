@@ -303,14 +303,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Implements the `RooCodeAPI` interface.
 	//
-	// The IPC server starts when either:
-	//  - `zoo-code.remoteControl.enabled` is on, or
+	// Remote Control (issue #650) is configured via the Zoo Code SettingsView
+	// and persisted through the ContextProxy (GlobalSettings). The IPC server
+	// starts when either:
+	//  - `remoteControlEnabled` is on, or
 	//  - the legacy `ROO_CODE_IPC_SOCKET_PATH` env var is set.
 	// The bridge process is forked only when the setting is on (the env var
 	// alone is for headless/CLI use and does not auto-fork the bridge).
-	const remoteControlConfig = vscode.workspace.getConfiguration("zoo-code.remoteControl")
-	const remoteControlEnabled = Boolean(remoteControlConfig.get<boolean>("enabled"))
-	const configuredSocketPath = remoteControlConfig.get<string>("socketPath") ?? ""
+	const remoteControlEnabled = Boolean(contextProxy.getValue("remoteControlEnabled"))
+	const configuredSocketPath = contextProxy.getValue("remoteControlSocketPath") ?? ""
 	const envSocketPath = process.env.ROO_CODE_IPC_SOCKET_PATH
 
 	const socketPath =
@@ -381,18 +382,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		startRemoteBridge(context, outputChannel, effectiveSocketPath)
 	}
 
-	// Hot-toggle Remote Control without restarting the extension host.
+	// Hot-toggle Remote Control without restarting the extension host. The
+	// webview `updateSettings` handler persists the new values to the
+	// ContextProxy and then fires `provider.onRemoteControlChange`.
 	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration("zoo-code.remoteControl")) {
-				return
-			}
-
-			const config = vscode.workspace.getConfiguration("zoo-code.remoteControl")
-			const enabled = Boolean(config.get<boolean>("enabled"))
-			const newSocketPath = config.get<string>("socketPath") ?? ""
+		provider.onRemoteControlChange(({ enabled, socketPath }) => {
 			const resolvedSocketPath =
-				newSocketPath || envSocketPath || path.join(os.tmpdir(), `zoo-code-${os.userInfo().uid}.sock`)
+				socketPath || envSocketPath || path.join(os.tmpdir(), `zoo-code-${os.userInfo().uid}.sock`)
 
 			if (enabled && resolvedSocketPath) {
 				if (

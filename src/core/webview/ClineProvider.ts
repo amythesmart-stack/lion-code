@@ -2281,6 +2281,8 @@ export class ClineProvider
 			autoCloseZooOpenedFiles,
 			autoCloseZooOpenedFilesAfterUserEdited,
 			autoCloseZooOpenedNewFiles,
+			remoteControlEnabled,
+			remoteControlSocketPath,
 		} = await this.getState()
 
 		let cloudOrganizations: CloudOrganizationMembership[] = []
@@ -2463,6 +2465,8 @@ export class ClineProvider
 			autoCloseZooOpenedFiles: autoCloseZooOpenedFiles ?? true,
 			autoCloseZooOpenedFilesAfterUserEdited: autoCloseZooOpenedFilesAfterUserEdited ?? false,
 			autoCloseZooOpenedNewFiles: autoCloseZooOpenedNewFiles ?? false,
+			remoteControlEnabled: remoteControlEnabled ?? false,
+			remoteControlSocketPath: remoteControlSocketPath ?? "",
 			openAiCodexIsAuthenticated: await (async () => {
 				try {
 					const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
@@ -2666,6 +2670,8 @@ export class ClineProvider
 			autoCloseZooOpenedFiles: stateValues.autoCloseZooOpenedFiles,
 			autoCloseZooOpenedFilesAfterUserEdited: stateValues.autoCloseZooOpenedFilesAfterUserEdited,
 			autoCloseZooOpenedNewFiles: stateValues.autoCloseZooOpenedNewFiles,
+			remoteControlEnabled: stateValues.remoteControlEnabled ?? false,
+			remoteControlSocketPath: stateValues.remoteControlSocketPath ?? "",
 		}
 	}
 
@@ -2776,6 +2782,28 @@ export class ClineProvider
 
 	public getValues() {
 		return this.contextProxy.getValues()
+	}
+
+	// Remote Control (issue #650): notify the extension host when the
+	// `remoteControlEnabled` / `remoteControlSocketPath` settings change via the
+	// webview so it can hot-toggle the IPC server + forked bridge without a
+	// restart. The extension subscribes via `onRemoteControlChange`.
+	private readonly _remoteControlChangeEmitter = new vscode.EventEmitter<{
+		enabled: boolean
+		socketPath: string
+	}>()
+
+	public readonly onRemoteControlChange = this._remoteControlChangeEmitter.event
+
+	/**
+	 * Fire the remote-control change event with the current values from the
+	 * ContextProxy. Called by the `updateSettings` webview message handler
+	 * after it persists `remoteControlEnabled` / `remoteControlSocketPath`.
+	 */
+	public notifyRemoteControlChange(): void {
+		const enabled = Boolean(this.contextProxy.getValue("remoteControlEnabled"))
+		const socketPath = this.contextProxy.getValue("remoteControlSocketPath") ?? ""
+		this._remoteControlChangeEmitter.fire({ enabled, socketPath })
 	}
 
 	public async setValues(values: RooCodeSettings) {

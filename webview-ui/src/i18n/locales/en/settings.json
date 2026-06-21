@@ -41,7 +41,20 @@
 		"ui": "UI",
 		"experimental": "Experimental",
 		"language": "Language",
+		"remoteControl": "Remote Control",
 		"about": "About Zoo Code"
+	},
+	"remoteControl": {
+		"description": "Start the IPC server and fork a background bridge process so Zoo Code's task stream and approval flow can be reached from another device. Opt-in: no socket is opened and no process is forked unless this is on. Changes apply without restarting.",
+		"enabled": {
+			"label": "Enable Remote Control",
+			"description": "Starts the IPC server and forks a background bridge process so Zoo Code's task stream and approval flow can be reached from another device."
+		},
+		"socketPath": {
+			"label": "Socket Path",
+			"description": "Unix socket path the IPC server listens on and the bridge connects to. Leave blank to use a per-user default under the system temp directory ($ROO_CODE_IPC_SOCKET_PATH overrides this if set). Only used when Remote Control is enabled.",
+			"placeholder": "Default: /tmp/zoo-code-<uid>.sock"
+		}
 	},
 	"about": {
 		"bugReport": {

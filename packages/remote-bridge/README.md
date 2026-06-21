@@ -23,7 +23,7 @@ What it does **not** do yet (later phases): WebRTC data channel, signaling, remo
 └──────────────────────┘                   └──────────────────────┘
 ```
 
-The socket path is the same one the extension already reads: the `ROO_CODE_IPC_SOCKET_PATH` environment variable. The extension starts its IPC server when either `zoo-code.remoteControl.enabled` is on **or** `ROO_CODE_IPC_SOCKET_PATH` is set, so the bridge is opt-in. The bridge process itself is only auto-forked when the setting is on (the env var alone is for headless/CLI use and does not auto-fork).
+The socket path is the same one the extension already reads: the `ROO_CODE_IPC_SOCKET_PATH` environment variable. The extension starts its IPC server when either the **Remote Control** setting is on (persisted via the ContextProxy / `GlobalSettings` as `remoteControlEnabled` / `remoteControlSocketPath`, surfaced in the Zoo Code SettingsView) **or** `ROO_CODE_IPC_SOCKET_PATH` is set, so the bridge is opt-in. The bridge process itself is only auto-forked when the setting is on (the env var alone is for headless/CLI use and does not auto-fork).
 
 ## Usage
 
@@ -62,11 +62,11 @@ The response event is pretty-printed to stdout; diagnostic logs go to stderr.
 
 ## Enabling from Zoo Code preferences
 
-Toggle **Settings → Zoo Code → Remote Control: Enabled** (`zoo-code.remoteControl.enabled`). When on, the extension:
+Toggle **Settings → Remote Control → Enable Remote Control** in the Zoo Code SettingsView (persisted as `remoteControlEnabled` / `remoteControlSocketPath` through the ContextProxy / `GlobalSettings`). When on, the extension:
 
-1. Starts its `IpcServer` on the configured socket (`zoo-code.remoteControl.socketPath`, or a per-user default under the system temp dir; `ROO_CODE_IPC_SOCKET_PATH` overrides if set).
+1. Starts its `IpcServer` on the configured socket (`remoteControlSocketPath`, or a per-user default under the system temp dir; `ROO_CODE_IPC_SOCKET_PATH` overrides if set).
 2. Forks this bridge in `--serve` mode against that socket via [`RemoteBridgeHost`](../../src/services/remote-bridge/RemoteBridgeHost.ts), with crash-restart backoff.
-3. Hot-toggles without a restart via a config-change listener in [`src/extension.ts`](../../src/extension.ts).
+3. Hot-toggles without a restart: the webview `updateSettings` handler persists the new values to the ContextProxy and fires [`ClineProvider#onRemoteControlChange`](../../src/core/webview/ClineProvider.ts), which [`src/extension.ts`](../../src/extension.ts) subscribes to.
 
 The bridge is bundled into the extension VSIX at `dist/remote-bridge/main.js` by [`src/esbuild.mjs`](../../src/esbuild.mjs).
 

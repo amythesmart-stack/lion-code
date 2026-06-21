@@ -1043,6 +1043,30 @@ describe("ClineProvider", () => {
 			expect(state.autoCloseZooOpenedNewFiles).toBe(false)
 		})
 
+		it("getStateToPostToWebview returns saved remoteControl values", async () => {
+			await provider.resolveWebviewView(mockWebviewView)
+
+			await provider.contextProxy.setValue("remoteControlEnabled", true)
+			await provider.contextProxy.setValue("remoteControlSocketPath", "/tmp/zoo-test.sock")
+
+			const state = await provider.getStateToPostToWebview()
+
+			expect(state.remoteControlEnabled).toBe(true)
+			expect(state.remoteControlSocketPath).toBe("/tmp/zoo-test.sock")
+		})
+
+		it("getStateToPostToWebview defaults remoteControl values when unset", async () => {
+			await provider.resolveWebviewView(mockWebviewView)
+
+			await provider.contextProxy.setValue("remoteControlEnabled", undefined)
+			await provider.contextProxy.setValue("remoteControlSocketPath", undefined)
+
+			const state = await provider.getStateToPostToWebview()
+
+			expect(state.remoteControlEnabled).toBe(false)
+			expect(state.remoteControlSocketPath).toBe("")
+		})
+
 		it("getState returns saved autoCloseZooOpenedFiles value for DiffViewProvider", async () => {
 			await provider.resolveWebviewView(mockWebviewView)
 
