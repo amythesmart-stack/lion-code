@@ -102,7 +102,13 @@ import { Task } from "../task/Task"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
 import type { ClineMessage, TodoItem } from "@roo-code/types"
-import { readApiMessages, saveApiMessages, saveTaskMessages, TaskHistoryStore } from "../task-persistence"
+import {
+	readApiMessages,
+	saveApiMessages,
+	saveTaskMessages,
+	TaskHistoryStore,
+	assertValidTransition,
+} from "../task-persistence"
 import { readTaskMessages } from "../task-persistence/taskMessages"
 import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
@@ -527,6 +533,7 @@ export class ClineProvider
 						const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
 
 						if (parentHistory?.status === "delegated" && parentHistory?.awaitingChildId === childTaskId) {
+							assertValidTransition(parentHistory.status, "active")
 							await this.updateTaskHistory({
 								...parentHistory,
 								status: "active",
@@ -3204,6 +3211,7 @@ export class ClineProvider
 					const { historyItem: parentHistory } = await this.getTaskWithId(task.parentTaskId!)
 
 					if (parentHistory?.status === "delegated" && parentHistory?.awaitingChildId === task.taskId) {
+						assertValidTransition(parentHistory.status, "active")
 						await this.updateTaskHistory({
 							...parentHistory,
 							status: "active",
@@ -3520,6 +3528,7 @@ export class ClineProvider
 		//    Broadcast and cache invalidation happen outside the lock after it releases.
 		try {
 			await this.taskHistoryStore.atomicReadAndUpdate(parentTaskId, (historyItem) => {
+				assertValidTransition(historyItem.status, "delegated")
 				const childIds = Array.from(new Set([...(historyItem.childIds ?? []), child.taskId]))
 				return {
 					...historyItem,
@@ -3749,6 +3758,9 @@ export class ClineProvider
 			// 3) Persist parent metadata before closing the child. If persistence fails,
 			//    the delegated child remains active and can retry completion.
 			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
+			if (historyItem.status !== "active") {
+				assertValidTransition(historyItem.status, "active")
+			}
 			const updatedHistory: typeof historyItem = {
 				...historyItem,
 				status: "active",
@@ -3774,6 +3786,7 @@ export class ClineProvider
 			//    that saveClineMessages() may have written during step 4.
 			try {
 				const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+				assertValidTransition(childHistory.status, "completed")
 				await this.updateTaskHistory({
 					...childHistory,
 					status: "completed",
