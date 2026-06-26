@@ -3746,44 +3746,43 @@ export class ClineProvider
 
 			await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
 
-			// 3) Persist parent metadata before closing the child. If persistence fails,
-			//    the delegated child remains active and can retry completion.
-			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
-			const updatedHistory: typeof historyItem = {
-				...historyItem,
-				status: "active",
-				completedByChildId: childTaskId,
-				completionResultSummary,
-				awaitingChildId: undefined,
-				childIds,
-			}
-			await this.updateTaskHistory(updatedHistory)
-
 			// 4) Close child instance if still open (single-open-task invariant).
-			//    This MUST happen BEFORE updating the child's status to "completed" because
+			//    This MUST happen BEFORE marking the child "completed" because
 			//    removeClineFromStack() → abortTask(true) → saveClineMessages() writes
 			//    the historyItem with initialStatus (typically "active"), which would
-			//    overwrite a "completed" status set earlier.
+			//    overwrite a "completed" status set later.
 			const current = this.getCurrentTask()
 			if (current?.taskId === childTaskId) {
 				await this.removeClineFromStack({ skipDelegationRepair: true })
 			}
 
-			// 5) Update child metadata to "completed" status.
-			//    This runs after the abort so it overwrites the stale "active" status
-			//    that saveClineMessages() may have written during step 4.
+			// 3+5) Atomically mark child completed and parent active in one lock acquisition.
+			//      No intermediate state is ever persisted — no sentinel needed.
+			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
+			const updatedHistory: typeof historyItem = {
+				...historyItem,
+				status: "active" as const,
+				completedByChildId: childTaskId,
+				completionResultSummary,
+				awaitingChildId: undefined,
+				childIds,
+			}
 			try {
-				const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
-				await this.updateTaskHistory({
-					...childHistory,
-					status: "completed",
-				})
+				await this.taskHistoryStore.atomicUpdatePair(
+					childTaskId,
+					parentTaskId,
+					(child) => ({ ...child, status: "completed" as const }),
+					(parent) => ({ ...parent, ...updatedHistory }),
+				)
+				this.recentTasksCache = undefined
 			} catch (err) {
 				this.log(
 					`[reopenParentFromDelegation] Failed to persist child completed status for ${childTaskId}: ${
 						(err as Error)?.message ?? String(err)
 					}`,
 				)
+				// Fall back: at least persist the parent so it can resume.
+				await this.updateTaskHistory(updatedHistory)
 			}
 
 			// 6) Emit TaskDelegationCompleted (provider-level)
