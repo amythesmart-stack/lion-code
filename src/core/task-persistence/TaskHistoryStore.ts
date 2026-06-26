@@ -9,7 +9,7 @@ import { safeWriteJson } from "../../utils/safeWriteJson"
 import { getStorageBasePath } from "../../utils/storage"
 
 /** Valid status values for a task's HistoryItem. */
-export type HistoryItemStatus = "active" | "delegated" | "completed"
+export type HistoryItemStatus = NonNullable<HistoryItem["status"]>
 
 const VALID_TRANSITIONS: Record<HistoryItemStatus, HistoryItemStatus[]> = {
 	active: ["delegated", "completed"],
@@ -188,9 +188,23 @@ export class TaskHistoryStore {
 
 	/**
 	 * Core upsert logic — must only be called from within `withLock`.
+	 *
+	 * Enforces state-machine transition rules when `item.status` changes.
+	 * Pass `skipTransitionCheck: true` only for administrative repairs (reconciliation,
+	 * migration) that need to write corrected state outside the normal task lifecycle.
 	 */
-	private async upsertCore(item: HistoryItem): Promise<HistoryItem[]> {
+	private async upsertCore(
+		item: HistoryItem,
+		options: { skipTransitionCheck?: boolean } = {},
+	): Promise<HistoryItem[]> {
 		const existing = this.cache.get(item.id)
+
+		// Enforce transition validity at the write boundary so that any caller
+		// (including fire-and-forget saves) cannot silently stomp a terminal status.
+		// Skip when there is no existing record — first insert has no prior state to transition from.
+		if (!options.skipTransitionCheck && existing && item.status !== undefined && item.status !== existing.status) {
+			assertValidTransition(existing.status, item.status)
+		}
 
 		// Merge: preserve existing metadata unless explicitly overwritten
 		const merged = existing ? { ...existing, ...item } : item
@@ -324,10 +338,13 @@ export class TaskHistoryStore {
 	 *
 	 * Called once from `initialize()` after `reconcile()`. Runs inside `withLock` to
 	 * prevent interleaving with watcher-triggered reconcile() calls. Iterates until
-	 * convergence so that chained delegations (A→B→C) are fully resolved in one startup.
+	 * convergence so that one-level chained delegations visible at startup are resolved.
 	 *
-	 * Must NOT be called from within `withLock` — each upsertCore call holds the lock
-	 * for the duration of a single write, and the outer lock wraps the whole pass.
+	 * Must NOT be called from within `withLock` — `withLock` is non-reentrant (promise
+	 * chain); calling `upsert` (which acquires the lock) from inside would deadlock.
+	 * `upsertCore` is called directly here instead, bypassing transition validation via
+	 * `skipTransitionCheck: true` because these writes are administrative repairs, not
+	 * runtime state-machine transitions.
 	 *
 	 * Cases repaired per pass:
 	 * - Parent `delegated` with no `awaitingChildId` → parent → `active` (invalid state)
@@ -343,7 +360,7 @@ export class TaskHistoryStore {
 				repairsInThisPass = 0
 				// Rebuild the lookup map each pass so repairs from the previous pass
 				// are visible when evaluating chained delegations.
-				const byId = new Map(this.getAll().map((i) => [i.id, i]))
+				const byId = new Map(Array.from(this.cache.values()).map((i) => [i.id, i]))
 
 				for (const [, item] of byId) {
 					if (item.status !== "delegated") {
@@ -351,7 +368,10 @@ export class TaskHistoryStore {
 					}
 
 					if (!item.awaitingChildId) {
-						await this.upsertCore({ ...item, status: "active", delegatedToId: undefined })
+						await this.upsertCore(
+							{ ...item, status: "active", awaitingChildId: undefined, delegatedToId: undefined },
+							{ skipTransitionCheck: true },
+						)
 						console.warn(
 							`[TaskHistoryStore] Reconciled invalid delegation: task ${item.id} → active (no awaitingChildId)`,
 						)
@@ -362,26 +382,32 @@ export class TaskHistoryStore {
 					const child = byId.get(item.awaitingChildId)
 
 					if (!child) {
-						await this.upsertCore({
-							...item,
-							status: "active",
-							awaitingChildId: undefined,
-							delegatedToId: undefined,
-						})
+						await this.upsertCore(
+							{
+								...item,
+								status: "active",
+								awaitingChildId: undefined,
+								delegatedToId: undefined,
+							},
+							{ skipTransitionCheck: true },
+						)
 						console.warn(
 							`[TaskHistoryStore] Reconciled orphaned delegation: task ${item.id} → active (child ${item.awaitingChildId} not found)`,
 						)
 						repairsInThisPass++
 					} else if (child.status === "completed") {
-						await this.upsertCore({
-							...item,
-							status: "active",
-							awaitingChildId: undefined,
-							delegatedToId: undefined,
-							completedByChildId: child.id,
-							completionResultSummary:
-								child.completionResultSummary ?? "Task completed (recovered after interruption)",
-						})
+						await this.upsertCore(
+							{
+								...item,
+								status: "active",
+								awaitingChildId: undefined,
+								delegatedToId: undefined,
+								completedByChildId: child.id,
+								completionResultSummary:
+									child.completionResultSummary ?? "Task completed (recovered after interruption)",
+							},
+							{ skipTransitionCheck: true },
+						)
 						console.warn(
 							`[TaskHistoryStore] Reconciled interrupted handoff: task ${item.id} → active (child ${item.awaitingChildId} already completed)`,
 						)
