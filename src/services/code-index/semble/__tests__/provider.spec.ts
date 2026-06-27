@@ -37,6 +37,29 @@ vi.mock("vscode", () => ({
 	ExtensionContext: vi.fn(),
 }))
 
+// Mock i18n — semble provider state messages are internationalized via t().
+// Return the English strings so existing message-content assertions stay stable.
+vi.mock("../../../../i18n", () => ({
+	t: (key: string, params?: any) => {
+		switch (key) {
+			case "embeddings:semble.downloadingBinary":
+				return "Downloading semble binary..."
+			case "embeddings:semble.ready":
+				return "Semble is ready. Searches index on-the-fly."
+			case "embeddings:semble.unsupportedPlatform":
+				return `Semble is not supported on this platform (${params?.platform ?? ""}-${params?.arch ?? ""}).`
+			case "embeddings:semble.downloadFailed":
+				return `Failed to download semble: ${params?.errorMessage ?? ""}`
+			case "embeddings:semble.checkFailed":
+				return `Semble check failed: ${params?.errorMessage ?? ""}`
+			case "embeddings:semble.providerReset":
+				return "Semble provider reset. On-disk cache remains until next rebuild."
+			default:
+				return key
+		}
+	},
+}))
+
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
 import { isSembleSupportedPlatform, downloadSemble } from "../semble-downloader"
@@ -194,25 +217,17 @@ describe("SembleProvider", () => {
 		it("should search using CLI and convert results", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "function authenticate() {}",
-						file_path: "src/auth.ts",
-						start_line: 10,
-						end_line: 25,
-						language: "typescript",
-						location: "src/auth.ts:10-25",
-					},
+					content: "function authenticate() {}",
+					file_path: "src/auth.ts",
+					start_line: 10,
+					end_line: 25,
 					score: 0.92,
 				},
 				{
-					chunk: {
-						content: "export function login() {}",
-						file_path: "src/login.ts",
-						start_line: 5,
-						end_line: 15,
-						language: "typescript",
-						location: "src/login.ts:5-15",
-					},
+					content: "export function login() {}",
+					file_path: "src/login.ts",
+					start_line: 5,
+					end_line: 15,
 					score: 0.78,
 				},
 			]
@@ -252,36 +267,24 @@ describe("SembleProvider", () => {
 		it("should filter out results with missing file_path", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "good result",
-						file_path: "src/good.ts",
-						start_line: 1,
-						end_line: 10,
-						language: "typescript",
-						location: "src/good.ts:1-10",
-					},
+					content: "good result",
+					file_path: "src/good.ts",
+					start_line: 1,
+					end_line: 10,
 					score: 0.8,
 				},
 				{
-					chunk: {
-						content: "no file path result",
-						file_path: "",
-						start_line: 1,
-						end_line: 5,
-						language: "typescript",
-						location: "",
-					},
+					content: "no file path result",
+					file_path: "",
+					start_line: 1,
+					end_line: 5,
 					score: 0.5,
 				},
 				{
-					chunk: {
-						content: "null file path result",
-						file_path: null,
-						start_line: 1,
-						end_line: 5,
-						language: null,
-						location: "",
-					},
+					content: "null file path result",
+					file_path: null,
+					start_line: 1,
+					end_line: 5,
 					score: 0.3,
 				},
 			]
@@ -321,36 +324,24 @@ describe("SembleProvider", () => {
 		it("should filter results by directoryPrefix when provided", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "code in src/auth",
-						file_path: "src/auth/login.ts",
-						start_line: 1,
-						end_line: 10,
-						language: "typescript",
-						location: "src/auth/login.ts:1-10",
-					},
+					content: "code in src/auth",
+					file_path: "src/auth/login.ts",
+					start_line: 1,
+					end_line: 10,
 					score: 0.95,
 				},
 				{
-					chunk: {
-						content: "code in src/utils",
-						file_path: "src/utils/helper.ts",
-						start_line: 5,
-						end_line: 15,
-						language: "typescript",
-						location: "src/utils/helper.ts:5-15",
-					},
+					content: "code in src/utils",
+					file_path: "src/utils/helper.ts",
+					start_line: 5,
+					end_line: 15,
 					score: 0.8,
 				},
 				{
-					chunk: {
-						content: "code in root",
-						file_path: "README.md",
-						start_line: 1,
-						end_line: 5,
-						language: "markdown",
-						location: "README.md:1-5",
-					},
+					content: "code in root",
+					file_path: "README.md",
+					start_line: 1,
+					end_line: 5,
 					score: 0.6,
 				},
 			]
@@ -367,25 +358,17 @@ describe("SembleProvider", () => {
 		it("should not filter results when no directoryPrefix is provided", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "code in src/auth",
-						file_path: "src/auth/login.ts",
-						start_line: 1,
-						end_line: 10,
-						language: "typescript",
-						location: "src/auth/login.ts:1-10",
-					},
+					content: "code in src/auth",
+					file_path: "src/auth/login.ts",
+					start_line: 1,
+					end_line: 10,
 					score: 0.95,
 				},
 				{
-					chunk: {
-						content: "code in src/utils",
-						file_path: "src/utils/helper.ts",
-						start_line: 5,
-						end_line: 15,
-						language: "typescript",
-						location: "src/utils/helper.ts:5-15",
-					},
+					content: "code in src/utils",
+					file_path: "src/utils/helper.ts",
+					start_line: 5,
+					end_line: 15,
 					score: 0.8,
 				},
 			]
@@ -459,14 +442,10 @@ describe("SembleProvider", () => {
 		it("should handle results with null content using empty string fallback", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: null,
-						file_path: "src/file.ts",
-						start_line: null,
-						end_line: null,
-						language: null,
-						location: "",
-					},
+					content: null,
+					file_path: "src/file.ts",
+					start_line: null,
+					end_line: null,
 					score: 0.6,
 				},
 			]
@@ -484,14 +463,10 @@ describe("SembleProvider", () => {
 		it("should handle results with undefined content fields", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: undefined,
-						file_path: "src/file.ts",
-						start_line: undefined,
-						end_line: undefined,
-						language: undefined,
-						location: "",
-					},
+					content: undefined,
+					file_path: "src/file.ts",
+					start_line: undefined,
+					end_line: undefined,
 					score: 0.5,
 				},
 			]
@@ -509,14 +484,10 @@ describe("SembleProvider", () => {
 		it("should normalize backslashes in file paths", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "code",
-						file_path: "src\\nested\\file.ts",
-						start_line: 1,
-						end_line: 10,
-						language: "typescript",
-						location: "",
-					},
+					content: "code",
+					file_path: "src\\nested\\file.ts",
+					start_line: 1,
+					end_line: 10,
 					score: 0.8,
 				},
 			]
@@ -533,14 +504,10 @@ describe("SembleProvider", () => {
 		it("should always join file paths against workspace root, even with directoryPrefix", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "code",
-						file_path: "src/file.ts",
-						start_line: 1,
-						end_line: 5,
-						language: "typescript",
-						location: "",
-					},
+					content: "code",
+					file_path: "src/file.ts",
+					start_line: 1,
+					end_line: 5,
 					score: 0.9,
 				},
 			]
@@ -556,36 +523,24 @@ describe("SembleProvider", () => {
 		it("should assign sequential semble-N IDs to results", async () => {
 			const mockResults = [
 				{
-					chunk: {
-						content: "a",
-						file_path: "a.ts",
-						start_line: 1,
-						end_line: 2,
-						language: "ts",
-						location: "",
-					},
+					content: "a",
+					file_path: "a.ts",
+					start_line: 1,
+					end_line: 2,
 					score: 0.9,
 				},
 				{
-					chunk: {
-						content: "b",
-						file_path: "b.ts",
-						start_line: 1,
-						end_line: 2,
-						language: "ts",
-						location: "",
-					},
+					content: "b",
+					file_path: "b.ts",
+					start_line: 1,
+					end_line: 2,
 					score: 0.8,
 				},
 				{
-					chunk: {
-						content: "c",
-						file_path: "c.ts",
-						start_line: 1,
-						end_line: 2,
-						language: "ts",
-						location: "",
-					},
+					content: "c",
+					file_path: "c.ts",
+					start_line: 1,
+					end_line: 2,
 					score: 0.7,
 				},
 			]

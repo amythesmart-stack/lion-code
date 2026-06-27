@@ -6,12 +6,5 @@ export {
 	downloadSemble,
 	getSembleBinaryPath,
 } from "./semble-downloader"
-export type {
-	ISembleProvider,
-	SembleSearchResult,
-	SembleChunk,
-	SembleCheckResult,
-	SembleConfig,
-	SembleContentType,
-} from "./types"
+export type { ISembleProvider, SembleSearchResult, SembleCheckResult, SembleConfig, SembleContentType } from "./types"
 export { SEMBLE_DEFAULTS } from "./types"

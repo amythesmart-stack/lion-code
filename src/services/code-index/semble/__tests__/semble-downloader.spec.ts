@@ -7,10 +7,10 @@ import { EventEmitter } from "events"
 // and computes a SHA-256. We make digest() dynamically return the expected checksum
 // for the current process.platform/arch so verification always passes in unit tests.
 const CHECKSUMS: Record<string, string> = {
-	"linux-x64": "2bd4117dbd1ff7a26ed5ef44dad8d43162a4b9f431ec0bcc9dd2f9c6f5952e28",
-	"linux-arm64": "177d14f41d3272594844a2635d59d97ad20400868a874a59169fd26a868c32a5",
-	"darwin-arm64": "9130f447ff2c21803853a9aee58268f0e05134326384ac23d8b74ed22905e118",
-	"win32-x64": "c8ae86f3703675e356824e08cf79c8a20c41c602296d2a5bff15bf35d762a46b",
+	"linux-x64": "33a6c8ae78d750e917b291524d788747c62de795274def5c6b07b7a6d1671493",
+	"linux-arm64": "a4a3fbca363f5a894a57594679c787ff6b4ac1332ebf0edcb36cc89f348c7aba",
+	"darwin-arm64": "f8b5718e2264c9addbf61ac52f0106f1ebb6717980bf25ecfe135d12f164ed30",
+	"win32-x64": "2a8734d486db1feaa3bd3cf111d1ac17c805102d758be8f5295fbc862ee00bb3",
 }
 vi.mock("crypto", () => ({
 	createHash: vi.fn(() => ({
@@ -29,6 +29,7 @@ vi.mock("fs/promises", () => ({
 	readFile: vi.fn(),
 	writeFile: vi.fn().mockResolvedValue(undefined),
 	rename: vi.fn().mockResolvedValue(undefined),
+	readdir: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock fs (createWriteStream and createReadStream for checksum verification)
@@ -182,7 +183,7 @@ describe("semble-downloader", () => {
 			// fs.access resolves => file exists
 			;(fs.access as any).mockResolvedValue(undefined)
 			// Version file matches current version
-			;(fs.readFile as any).mockResolvedValue("v0.3.1")
+			;(fs.readFile as any).mockResolvedValue("v0.4.1")
 
 			try {
 				const result = await downloadSemble("/storage")
@@ -231,7 +232,7 @@ describe("semble-downloader", () => {
 					"tar",
 					[
 						"-xzf",
-						path.join("/storage", "semble-linux-x64-fast.tar.gz"),
+						path.join("/storage", "v0.4.1-semble-linux-x64-fast.tar.gz"),
 						"-C",
 						path.join("/storage", "semble.new"),
 						"--no-same-owner",
@@ -248,11 +249,11 @@ describe("semble-downloader", () => {
 				// Version file should be written
 				expect(fs.writeFile).toHaveBeenCalledWith(
 					path.join("/storage", "semble", ".semble-version"),
-					"v0.3.1",
+					"v0.4.1",
 					"utf-8",
 				)
-				// Archive should be cleaned up
-				expect(fs.unlink).toHaveBeenCalledWith(path.join("/storage", "semble-linux-x64-fast.tar.gz"))
+				// Archive should be cleaned up (version-prefixed local cache path)
+				expect(fs.unlink).toHaveBeenCalledWith(path.join("/storage", "v0.4.1-semble-linux-x64-fast.tar.gz"))
 			} finally {
 				if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform)
 				if (originalArch) Object.defineProperty(process, "arch", originalArch)
@@ -269,7 +270,7 @@ describe("semble-downloader", () => {
 			// fs.access resolves => file exists
 			;(fs.access as any).mockResolvedValue(undefined)
 			// Version file matches
-			;(fs.readFile as any).mockResolvedValue("v0.3.1")
+			;(fs.readFile as any).mockResolvedValue("v0.4.1")
 
 			try {
 				const result = await downloadSemble("/storage")
@@ -309,7 +310,7 @@ describe("semble-downloader", () => {
 
 			try {
 				await expect(downloadSemble("/storage")).rejects.toThrow("Failed to download semble")
-				expect(fs.unlink).toHaveBeenCalledWith(path.join("/storage", "semble-linux-arm64-fast.tar.gz"))
+				expect(fs.unlink).toHaveBeenCalledWith(path.join("/storage", "v0.4.1-semble-linux-arm64-fast.tar.gz"))
 				// Should clean up staging directory, not the original
 				expect(fs.rm).toHaveBeenCalledWith(path.join("/storage", "semble.new"), {
 					recursive: true,
@@ -622,11 +623,64 @@ describe("semble-downloader", () => {
 					path.join("/storage", "semble"),
 				)
 				// Should download the new version
-				expect(https.get).toHaveBeenCalledWith(expect.stringContaining("v0.3.1"), expect.any(Function))
+				expect(https.get).toHaveBeenCalledWith(expect.stringContaining("v0.4.1"), expect.any(Function))
 				// Should write the new version file
 				expect(fs.writeFile).toHaveBeenCalledWith(
 					path.join("/storage", "semble", ".semble-version"),
-					"v0.3.1",
+					"v0.4.1",
+					"utf-8",
+				)
+			} finally {
+				if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform)
+				if (originalArch) Object.defineProperty(process, "arch", originalArch)
+			}
+		})
+
+		it("should download a fresh package immediately after a version upgrade (version-prefixed archive path)", async () => {
+			const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
+			const originalArch = Object.getOwnPropertyDescriptor(process, "arch")
+
+			Object.defineProperty(process, "platform", { value: "linux", configurable: true })
+			Object.defineProperty(process, "arch", { value: "x64", configurable: true })
+
+			// Old version recorded on disk → must trigger a fresh download
+			;(fs.readFile as any).mockResolvedValue("v0.4.0")
+			// fs.access resolves — only called for staged binary verification
+			;(fs.access as any).mockResolvedValue(undefined)
+
+			// Simulate successful download
+			mockWriteStream.on.mockImplementation((event: string, cb: () => void) => {
+				if (event === "finish") {
+					setImmediate(cb)
+				}
+			})
+
+			try {
+				const result = await downloadSemble("/storage")
+
+				expect(result).toBe(path.join("/storage", "semble", "semble"))
+				const versionedArchive = path.join("/storage", "v0.4.1-semble-linux-x64-fast.tar.gz")
+
+				// A fresh download must happen after the version upgrade
+				expect(https.get).toHaveBeenCalledWith(expect.stringContaining("v0.4.1"), expect.any(Function))
+				// The release URL keeps the unversioned asset name
+				expect(https.get).toHaveBeenCalledWith(
+					expect.stringContaining("semble-linux-x64-fast.tar.gz"),
+					expect.any(Function),
+				)
+				// Extraction reads from the version-prefixed local cache path
+				expect(spawn).toHaveBeenCalledWith(
+					"tar",
+					expect.arrayContaining(["-xzf", versionedArchive]),
+					expect.any(Object),
+				)
+				// The stale archive is removed before the fresh download to guarantee
+				// a clean package is verified against the new checksum.
+				expect(fs.unlink).toHaveBeenCalledWith(versionedArchive)
+				// The new version file is recorded
+				expect(fs.writeFile).toHaveBeenCalledWith(
+					path.join("/storage", "semble", ".semble-version"),
+					"v0.4.1",
 					"utf-8",
 				)
 			} finally {
@@ -643,7 +697,7 @@ describe("semble-downloader", () => {
 			Object.defineProperty(process, "arch", { value: "x64", configurable: true })
 
 			// Version matches
-			;(fs.readFile as any).mockResolvedValue("v0.3.1")
+			;(fs.readFile as any).mockResolvedValue("v0.4.1")
 			// Binary exists
 			;(fs.access as any).mockResolvedValue(undefined)
 
@@ -669,7 +723,7 @@ describe("semble-downloader", () => {
 			Object.defineProperty(process, "arch", { value: "x64", configurable: true })
 
 			// Version matches
-			;(fs.readFile as any).mockResolvedValue("v0.3.1")
+			;(fs.readFile as any).mockResolvedValue("v0.4.1")
 			// But binary is missing
 			let accessCallCount = 0
 			;(fs.access as any).mockImplementation(() => {
@@ -702,7 +756,7 @@ describe("semble-downloader", () => {
 				// Should write version file again
 				expect(fs.writeFile).toHaveBeenCalledWith(
 					path.join("/storage", "semble", ".semble-version"),
-					"v0.3.1",
+					"v0.4.1",
 					"utf-8",
 				)
 			} finally {
@@ -743,7 +797,7 @@ describe("semble-downloader", () => {
 				// Should write version file
 				expect(fs.writeFile).toHaveBeenCalledWith(
 					path.join("/storage", "semble", ".semble-version"),
-					"v0.3.1",
+					"v0.4.1",
 					"utf-8",
 				)
 			} finally {
