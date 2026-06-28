@@ -48,6 +48,7 @@ import {
 
 import {
 	Anthropic,
+	AnthropicCustom,
 	Baseten,
 	Bedrock,
 	DeepSeek,
@@ -464,6 +465,16 @@ const ApiOptions = ({
 						<Anthropic
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
+							simplifySettings={fromWelcomeView}
+						/>
+					)}
+
+					{selectedProvider === "anthropic-custom" && (
+						<AnthropicCustom
+							apiConfiguration={apiConfiguration}
+							setApiConfigurationField={setApiConfigurationField}
+							organizationAllowList={organizationAllowList}
+							modelValidationError={modelValidationError}
 							simplifySettings={fromWelcomeView}
 						/>
 					)}

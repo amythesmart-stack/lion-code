@@ -53,6 +53,8 @@ export class ProfileValidator {
 		switch (profile.apiProvider) {
 			case "openai":
 				return profile.openAiModelId
+			case "anthropic-custom":
+				return profile.anthropicCustomModelId
 			case "anthropic":
 			case "openai-native":
 			case "bedrock":

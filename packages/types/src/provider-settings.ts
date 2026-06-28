@@ -85,7 +85,7 @@ export const isInternalProvider = (key: string): key is InternalProvider =>
  * Custom providers are completely configurable within Roo Code settings.
  */
 
-export const customProviders = ["openai"] as const
+export const customProviders = ["openai", "anthropic-custom"] as const
 
 export type CustomProvider = (typeof customProviders)[number]
 
@@ -262,6 +262,15 @@ const openAiSchema = baseProviderSettingsSchema.extend({
 	openAiHeaders: z.record(z.string(), z.string()).optional(),
 })
 
+const anthropicCustomSchema = baseProviderSettingsSchema.extend({
+	anthropicCustomBaseUrl: z.string().optional(),
+	anthropicCustomApiKey: z.string().optional(),
+	anthropicCustomModelId: z.string().optional(),
+	anthropicCustomModelInfo: modelInfoSchema.nullish(),
+	anthropicCustomStreamingEnabled: z.boolean().optional(),
+	anthropicCustomHeaders: z.record(z.string(), z.string()).optional(),
+})
+
 const ollamaSchema = baseProviderSettingsSchema.extend({
 	ollamaModelId: z.string().optional(),
 	ollamaBaseUrl: z.string().optional(),
@@ -427,6 +436,7 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	bedrockSchema.merge(z.object({ apiProvider: z.literal("bedrock") })),
 	vertexSchema.merge(z.object({ apiProvider: z.literal("vertex") })),
 	openAiSchema.merge(z.object({ apiProvider: z.literal("openai") })),
+	anthropicCustomSchema.merge(z.object({ apiProvider: z.literal("anthropic-custom") })),
 	ollamaSchema.merge(z.object({ apiProvider: z.literal("ollama") })),
 	vsCodeLmSchema.merge(z.object({ apiProvider: z.literal("vscode-lm") })),
 	lmStudioSchema.merge(z.object({ apiProvider: z.literal("lmstudio") })),
@@ -463,6 +473,7 @@ export const providerSettingsSchema = z.object({
 	...bedrockSchema.shape,
 	...vertexSchema.shape,
 	...openAiSchema.shape,
+	...anthropicCustomSchema.shape,
 	...ollamaSchema.shape,
 	...vsCodeLmSchema.shape,
 	...lmStudioSchema.shape,
@@ -512,6 +523,7 @@ export const modelIdKeys = [
 	"apiModelId",
 	"openRouterModelId",
 	"openAiModelId",
+	"anthropicCustomModelId",
 	"ollamaModelId",
 	"lmStudioModelId",
 	"lmStudioDraftModelId",
@@ -575,7 +587,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
  */
 
 // Providers that use Anthropic-style API protocol.
-export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = ["anthropic", "bedrock", "minimax"]
+export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = ["anthropic", "anthropic-custom", "bedrock", "minimax"]
 
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
@@ -615,7 +627,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
  */
 
 export const MODELS_BY_PROVIDER: Record<
-	Exclude<ProviderName, "fake-ai" | "gemini-cli" | "openai">,
+	Exclude<ProviderName, "fake-ai" | "gemini-cli" | "openai" | "anthropic-custom">,
 	{ id: ProviderName; label: string; models: string[] }
 > = {
 	anthropic: {

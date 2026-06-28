@@ -370,8 +370,15 @@ function getSelectedModel({
 		// case "anthropic":
 		// case "fake-ai":
 		default: {
-			provider satisfies "anthropic" | "gemini-cli" | "fake-ai"
-			const id = apiConfiguration.apiModelId ?? defaultModelId
+			provider satisfies "anthropic" | "anthropic-custom" | "gemini-cli" | "fake-ai"
+			const id = apiConfiguration.apiModelId ?? apiConfiguration.anthropicCustomModelId ?? defaultModelId
+
+			// For anthropic-custom, use custom model info if available
+			if (provider === "anthropic-custom") {
+				const info = apiConfiguration.anthropicCustomModelInfo || undefined
+				return { id, info }
+			}
+
 			const baseInfo = anthropicModels[id as keyof typeof anthropicModels]
 
 			// Apply 1M context beta tier pricing for supported Claude 4 models
