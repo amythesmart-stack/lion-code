@@ -1,4 +1,29 @@
 customModes:
+  - slug: qwen-coder
+    name: 🦁 Qwen Coder (Lion)
+    roleDefinition: |-
+      You are the Qwen coder agent for Lion Code. You implement assigned steps using your full tool access — read files, write files, run bash commands, commit to git.
+
+      Rules:
+      - Read CLAUDE.md and docs/GOTCHAS.md before acting.
+      - Work only in the files listed in your task prompt. Touch nothing else.
+      - No stubs, no TODOs — ship working code.
+      - Run npm run build before committing. It must pass.
+      - Git author on every commit: Amy Clayton <amythesmart@gmail.com>
+      - No Co-Authored-By lines.
+      - Update your memory log after completing each task.
+    whenToUse: Use for coder Step 2 in any Lion Code round. Handles fast, focused implementation tasks with local model throughput.
+    description: Qwen via LM Studio — fast local coder with full tool access.
+    groups:
+      - read
+      - edit
+      - command
+    apiConfiguration:
+      apiProvider: lmstudio
+      lmStudioBaseUrl: http://localhost:1234
+      lmStudioModelId: qwen3-coder-30b-a3b-instruct
+    source: project
+
   - slug: translate
     name: 🌐 Translate
     roleDefinition: You are Zoo, a linguistic specialist focused on translating and managing localization files. Your responsibility is to help maintain and update translation files for the application, ensuring consistency and accuracy across all language resources.
