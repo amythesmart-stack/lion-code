@@ -1,0 +1,95 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(git:*)",
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(cat:*)",
+      "Bash(touch:*)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(bash:*)",
+      "Bash(sh:*)",
+      "Bash(env:*)",
+      "Bash(export:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(xargs:*)",
+      "Bash(tee:*)",
+      "Bash(date:*)",
+      "Bash(which:*)",
+      "Bash(type:*)",
+      "Bash(command:*)",
+      "Bash(claude:*)",
+      "Bash(codex:*)",
+      "Bash(lion:*)",
+      "Bash(gh:*)",
+      "Bash(./scripts/delegate-to-codex.sh:*)",
+      "Bash(./scripts/delegate-to-claude.sh:*)",
+      "Bash(./scripts/delegate-to-qwen.sh:*)",
+      "Bash(./scripts/delegate-to-lion.sh:*)",
+      "Bash(./scripts/delegate-to-model-selector.sh:*)",
+      "Bash(bash scripts/delegate-to-codex.sh:*)",
+      "Bash(bash scripts/delegate-to-claude.sh:*)",
+      "Bash(bash scripts/delegate-to-qwen.sh:*)",
+      "Bash(bash scripts/delegate-to-lion.sh:*)",
+      "Bash(bash scripts/delegate-to-model-selector.sh:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-start.js",
+            "description": "Load last session state for continuity"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/pre-compact.js",
+            "description": "Save session state before context compaction"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/quality-gate.js",
+            "description": "TypeScript type-check after file edits"
+          }
+        ]
+      }
+    ]
+  }
+}
