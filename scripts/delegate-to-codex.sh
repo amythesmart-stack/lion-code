@@ -10,4 +10,4 @@ done
 command -v codex &>/dev/null || { echo "[delegate-to-codex] ERROR: 'codex' not found. Run: npm install -g @openai/codex" >&2; exit 1; }
 [[ "$QUIET" != "true" ]] && printf '\n── Codex delegation ──\nDir: %s\nTask: %s\n\n' "$WORK_DIR" "$TASK"
 cd "$WORK_DIR"
-exec codex --approval-mode full-auto -q "$TASK"
+exec codex exec --dangerously-bypass-approvals-and-sandbox "$TASK" </dev/null
