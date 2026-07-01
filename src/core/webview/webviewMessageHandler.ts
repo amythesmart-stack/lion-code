@@ -1229,13 +1229,15 @@ export const webviewMessageHandler = async (
 			try {
 				const requestedBaseUrl = message.values?.baseUrl
 				const hasPreviewBaseUrl = typeof requestedBaseUrl === "string"
+				const lmStudioApiKey = lmStudioApiConfig.lmStudioApiKey
 				let lmStudioModels: ModelRecord
 				if (hasPreviewBaseUrl) {
-					lmStudioModels = await getLMStudioModels(requestedBaseUrl)
+					lmStudioModels = await getLMStudioModels(requestedBaseUrl, lmStudioApiKey)
 				} else {
 					const lmStudioOptions = {
 						provider: "lmstudio" as const,
 						baseUrl: lmStudioApiConfig.lmStudioBaseUrl,
+						apiKey: lmStudioApiKey,
 					}
 					// Flush cache and refresh to ensure fresh models.
 					await flushModels(lmStudioOptions, true)

@@ -463,6 +463,7 @@ export class ClineProvider
 					await forceFullModelDetailsLoad(
 						cline.apiConfiguration.lmStudioBaseUrl ?? "http://localhost:1234",
 						cline.apiConfiguration.lmStudioModelId!,
+						cline.apiConfiguration.lmStudioApiKey,
 					)
 				}
 			} catch (error) {
@@ -2341,9 +2342,8 @@ export class ClineProvider
 		}
 
 		try {
-			const { isZooCodeAuthenticated, getCachedZooCodeUserInfo, getZooCodeBaseUrl } = await import(
-				"../../services/zoo-code-auth"
-			)
+			const { isZooCodeAuthenticated, getCachedZooCodeUserInfo, getZooCodeBaseUrl } =
+				await import("../../services/zoo-code-auth")
 			const userInfo = getCachedZooCodeUserInfo()
 			zooCodeState = {
 				zooCodeIsAuthenticated: await isZooCodeAuthenticated(),

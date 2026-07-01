@@ -113,6 +113,14 @@ export const LMStudio = ({ apiConfiguration, setApiConfigurationField }: LMStudi
 				className="w-full">
 				<label className="block font-medium mb-1">{t("settings:providers.lmStudio.baseUrl")}</label>
 			</VSCodeTextField>
+			<VSCodeTextField
+				value={apiConfiguration?.lmStudioApiKey || ""}
+				type="password"
+				onInput={handleInputChange("lmStudioApiKey")}
+				placeholder="sk-lm-... (optional)"
+				className="w-full">
+				<label className="block font-medium mb-1">API Key</label>
+			</VSCodeTextField>
 			<ModelPicker
 				apiConfiguration={apiConfiguration}
 				setApiConfigurationField={setApiConfigurationField}

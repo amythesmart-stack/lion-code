@@ -203,7 +203,7 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getOllamaModels(options.baseUrl, options.apiKey)
 			break
 		case "lmstudio":
-			models = await getLMStudioModels(options.baseUrl)
+			models = await getLMStudioModels(options.baseUrl, options.apiKey)
 			break
 		case "vercel-ai-gateway":
 			models = await getVercelAiGatewayModels()
@@ -430,9 +430,7 @@ export const flushModels = async (options: GetModelsOptions, refresh: boolean = 
  * @param provider - The provider to get models for.
  * @returns Models from memory cache, disk cache, or undefined if not cached.
  */
-export function getModelsFromCache(
-	options: GetModelsOptions | ProviderName,
-): ModelRecord | undefined {
+export function getModelsFromCache(options: GetModelsOptions | ProviderName): ModelRecord | undefined {
 	// Auth-scoped providers (e.g. zoo-gateway) must never be served from cache --
 	// their model lists are user-specific and a stale file left over from a previous
 	// session could leak another user's list. Mirror the guards in getModels/refreshModels.

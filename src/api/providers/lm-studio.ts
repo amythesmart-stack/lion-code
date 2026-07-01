@@ -26,12 +26,10 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		super()
 		this.options = options
 
-		// LM Studio uses "noop" as a placeholder API key
-		const apiKey = "noop"
-
+		const rawBase = (this.options.lmStudioBaseUrl || "http://localhost:1234").replace(/\/v1\/?$/, "")
 		this.client = new OpenAI({
-			baseURL: (this.options.lmStudioBaseUrl || "http://localhost:1234") + "/v1",
-			apiKey: apiKey,
+			baseURL: `${rawBase}/v1`,
+			apiKey: this.options.lmStudioApiKey || "noop",
 			timeout: this.timeoutMs,
 		})
 	}
@@ -82,14 +80,15 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		let assistantText = ""
 
 		try {
+			const tools = this.convertToolsForOpenAI(metadata?.tools)
 			const params: OpenAI.Chat.ChatCompletionCreateParamsStreaming & { draft_model?: string } = {
 				model: this.getModel().id,
 				messages: openAiMessages,
 				temperature: this.options.modelTemperature ?? LMSTUDIO_DEFAULT_TEMPERATURE,
 				stream: true,
-				tools: this.convertToolsForOpenAI(metadata?.tools),
-				tool_choice: metadata?.tool_choice,
-				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
+				...(tools && tools.length > 0 && { tools }),
+				...(tools && tools.length > 0 && metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
+				...(metadata?.parallelToolCalls !== undefined && { parallel_tool_calls: metadata.parallelToolCalls }),
 			}
 
 			if (this.options.lmStudioSpeculativeDecodingEnabled && this.options.lmStudioDraftModelId) {
@@ -163,9 +162,8 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				outputTokens,
 			} as const
 		} catch (error) {
-			throw new Error(
-				"Please check the LM Studio developer logs to debug what went wrong. You may need to load the model with a larger context length to work with Roo Code's prompts.",
-			)
+			const detail = error instanceof Error ? error.message : String(error)
+			throw new Error(`LM Studio error (model: ${this.getModel().id}): ${detail}`)
 		}
 	}
 
@@ -174,17 +172,21 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 			provider: "lmstudio",
 			baseUrl: this.options.lmStudioBaseUrl,
 		})
-		if (models && this.options.lmStudioModelId && models[this.options.lmStudioModelId]) {
-			return {
-				id: this.options.lmStudioModelId,
-				info: models[this.options.lmStudioModelId],
-			}
-		} else {
-			return {
-				id: this.options.lmStudioModelId || "",
-				info: openAiModelInfoSaneDefaults,
+
+		// Strip any hash prefix LM Studio may have added (format: "<32 hex chars>:<path>").
+		// Older cached selections may carry this prefix; REST API prefers the clean path.
+		const storedId = this.options.lmStudioModelId || ""
+		const cleanId = storedId.replace(/^[0-9a-f]{32}:/i, "")
+
+		if (models) {
+			// Try clean ID first, then fall back to the raw stored ID
+			const info = models[cleanId] ?? models[storedId]
+			if (info) {
+				return { id: cleanId || storedId, info }
 			}
 		}
+
+		return { id: cleanId || storedId, info: openAiModelInfoSaneDefaults }
 	}
 
 	async completePrompt(prompt: string): Promise<string> {
@@ -210,9 +212,8 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 			}
 			return response.choices[0]?.message.content || ""
 		} catch (error) {
-			throw new Error(
-				"Please check the LM Studio developer logs to debug what went wrong. You may need to load the model with a larger context length to work with Roo Code's prompts.",
-			)
+			const detail = error instanceof Error ? error.message : String(error)
+			throw new Error(`LM Studio error (model: ${this.getModel().id}): ${detail}`)
 		}
 	}
 }
