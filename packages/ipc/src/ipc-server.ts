@@ -1,6 +1,7 @@
 import EventEmitter from "node:events"
 import { Socket } from "node:net"
 import * as crypto from "node:crypto"
+import * as fs from "node:fs"
 
 import ipc from "node-ipc"
 
@@ -32,6 +33,13 @@ export class IpcServer extends EventEmitter<IpcServerEvents> implements RooCodeI
 		this._isListening = true
 
 		ipc.config.silent = true
+
+		// Delete stale socket file left behind by a previous crash.
+		try {
+			fs.unlinkSync(this._socketPath)
+		} catch {
+			/* doesn't exist — fine */
+		}
 
 		ipc.serve(this.socketPath, () => {
 			ipc.server.on("connect", (socket) => this.onConnect(socket))
